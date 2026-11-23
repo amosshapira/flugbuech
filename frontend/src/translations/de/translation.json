@@ -139,6 +139,7 @@
   },
   "flights": {
     "action--add-flight": "Flug hinzufügen",
+    "action--backfill-igc": "Back-fill from IGC files",
     "action--delete-flight": "Flug löschen",
     "action--download-igc": "IGC-Datei herunterladen",
     "action--edit-flight": "Flug bearbeiten",
@@ -152,7 +153,10 @@
     "column--launch": "Startplatz",
     "column--track-distance": "Tracklänge",
     "column--xcontest": "XContest",
+    "error--backfill-error": "The flights could not be updated from the IGC files due to an error on the server: {message}",
     "error--delete-error": "Der Flug konnte aufgrund eines Serverfehlers nicht gelöscht werden: {message}",
+    "hint--backfill-igc": "Re-parse the stored IGC files and fill in empty fields (glider, launch/landing site, crew, max altitude, height gain). Existing values are never overwritten.",
+    "prose--backfill-success": "Back-fill complete: {flights} flight(s) updated — {gliders} glider(s), {locations} site(s), {crew} crew, {altitudes} altitude value(s).",
     "prose--delete-confirm": "Bist du sicher, dass du den {flight} löschen möchtest?",
     "prose--delete-success": "{flight} erfolgreich gelöscht",
     "prose--flight-log-count": "Du hast bisher {count, plural, =1 {# Flug} other {# Flüge}} gemacht!",

@@ -380,6 +380,16 @@ pub fn get_flight_ids_with_igc_for_user(conn: &mut PgConnection, user: &User) ->
         .expect("Error loading flight ids with IGC for user")
 }
 
+/// Return all flights of the specified user that have IGC data, together with
+/// the IGC data.
+pub fn get_flights_with_igc_for_user(conn: &mut PgConnection, user: &User) -> Vec<(Flight, Igc)> {
+    Flight::belonging_to(user)
+        .inner_join(igcs::table)
+        .select((flights::all_columns, igcs::all_columns))
+        .load(conn)
+        .expect("Error loading flights with IGC data for user")
+}
+
 /// Return whether or not the specified flight has associated IGC data.
 pub fn flight_has_igc(conn: &mut PgConnection, flight: &Flight) -> bool {
     select(exists(igcs::table.filter(igcs::flight_id.eq(flight.id))))

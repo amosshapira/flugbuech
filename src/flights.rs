@@ -22,7 +22,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     auth, data,
-    models::{Location, NewFlight, User},
+    models::{Glider, Location, NewFlight, User},
+    process_igc::parse_igc_data,
     responders::ApiError,
 };
 
@@ -737,6 +738,191 @@ pub fn add_nologin() -> ApiError {
     ApiError::MissingAuthentication
 }
 
+/// Result summary of an IGC back-fill run.
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiBackfillResult {
+    flights_scanned: usize,
+    flights_updated: usize,
+    gliders_set: usize,
+    locations_set: usize,
+    crew_set: usize,
+    altitudes_set: usize,
+}
+
+/// Try to match the glider referenced in an IGC file (registration from
+/// HFGIDGLIDERID, type/model from HFGTYGLIDERTYPE) against the user's gliders.
+/// Only returns a glider ID if the match is unambiguous.
+fn match_glider(igc_gliderid: Option<&str>, igc_glidertype: Option<&str>, gliders: &[Glider]) -> Option<i32> {
+    let normalize = |s: &str| s.trim().to_lowercase();
+
+    if let Some(registration) = igc_gliderid {
+        let registration = normalize(registration);
+        if !registration.is_empty() {
+            let matches: Vec<&Glider> = gliders
+                .iter()
+                .filter(|g| {
+                    g.registration
+                        .as_deref()
+                        .map(|r| normalize(r) == registration)
+                        .unwrap_or(false)
+                })
+                .collect();
+            if matches.len() == 1 {
+                return Some(matches[0].id);
+            }
+        }
+    }
+
+    if let Some(glider_type) = igc_glidertype {
+        let glider_type = normalize(glider_type);
+        if !glider_type.is_empty() {
+            let matches: Vec<&Glider> = gliders
+                .iter()
+                .filter(|g| {
+                    let model = normalize(&g.model);
+                    !model.is_empty()
+                        && (model == glider_type
+                            || model.contains(&glider_type)
+                            || glider_type.contains(&model))
+                })
+                .collect();
+            if matches.len() == 1 {
+                return Some(matches[0].id);
+            }
+        }
+    }
+
+    None
+}
+
+/// Re-parse the IGC files of all flights of the specified user and back-fill
+/// empty fields: glider, launch/landing site, crew, max altitude and height
+/// gain. Existing values are never overwritten.
+fn backfill_igc_for_user(
+    db: &mut diesel::PgConnection,
+    user: &User,
+) -> diesel::QueryResult<ApiBackfillResult> {
+    let flights_with_igc = data::get_flights_with_igc_for_user(db, user);
+    let gliders = data::get_gliders_for_user(db, user);
+
+    let mut result = ApiBackfillResult {
+        flights_scanned: flights_with_igc.len(),
+        flights_updated: 0,
+        gliders_set: 0,
+        locations_set: 0,
+        crew_set: 0,
+        altitudes_set: 0,
+    };
+
+    for (mut flight, igc) in flights_with_igc {
+        let mut changed = false;
+        let info = match parse_igc_data(&igc.data, user, db) {
+            crate::process_igc::FlightInfoResult::Success(info) => info,
+            crate::process_igc::FlightInfoResult::Error { msg } => {
+                log::warn!("Could not parse IGC of flight {}: {}", flight.id, msg);
+                continue;
+            }
+        };
+
+        // Glider
+        if flight.glider_id.is_none() {
+            if let Some(glider_id) =
+                match_glider(info.gliderid.as_deref(), info.glidertype.as_deref(), &gliders)
+            {
+                flight.glider_id = Some(glider_id);
+                result.gliders_set += 1;
+                changed = true;
+            }
+        }
+
+        // Launch and landing sites
+        if flight.launch_at.is_none() {
+            if let Some(location_id) = info.launch.and_then(|launch| launch.location_id) {
+                flight.launch_at = Some(location_id);
+                result.locations_set += 1;
+                changed = true;
+            }
+        }
+        if flight.landing_at.is_none() {
+            if let Some(location_id) = info.landing.and_then(|landing| landing.location_id) {
+                flight.landing_at = Some(location_id);
+                result.locations_set += 1;
+                changed = true;
+            }
+        }
+
+        // Crew
+        if flight.pilot_in_command.is_none() {
+            if let Some(pilot) = info.pilot_in_command.as_ref().or(info.pilot.as_ref()) {
+                flight.pilot_in_command = Some(pilot.clone());
+                result.crew_set += 1;
+                changed = true;
+            }
+        }
+        if flight.second_pilot.is_none() {
+            if let Some(second_pilot) = &info.second_pilot {
+                flight.second_pilot = Some(second_pilot.clone());
+                result.crew_set += 1;
+                changed = true;
+            }
+        }
+
+        // Altitude metrics
+        if flight.max_altitude_m.is_none() {
+            flight.max_altitude_m = info.max_altitude_m;
+            if info.max_altitude_m.is_some() {
+                result.altitudes_set += 1;
+                changed = true;
+            }
+        }
+        if flight.height_gain_m.is_none() {
+            flight.height_gain_m = info.height_gain_m;
+            if info.height_gain_m.is_some() {
+                result.altitudes_set += 1;
+                changed = true;
+            }
+        }
+
+        if changed {
+            data::update_flight(db, &flight);
+            result.flights_updated += 1;
+        }
+    }
+
+    Ok(result)
+}
+
+/// Back-fill flight fields from the stored IGC files.
+#[post("/flights/backfill_igc")]
+pub async fn backfill_igc(
+    user: auth::AuthUser,
+    database: data::Database,
+) -> Result<Json<ApiBackfillResult>, ApiError> {
+    log::debug!("flights::backfill_igc");
+    let user = user.into_inner();
+    let result = database
+        .run(move |db| backfill_igc_for_user(db, &user))
+        .await
+        .map_err(|e| {
+            log::error!("Back-filling IGC data failed: {e}");
+            ApiError::IoError {
+                message: "Could not back-fill IGC data".into(),
+            }
+        })?;
+    log::info!(
+        "Back-filled IGC data: {} flights scanned, {} updated",
+        result.flights_scanned,
+        result.flights_updated
+    );
+    Ok(Json(result))
+}
+
+#[post("/flights/backfill_igc", rank = 2)]
+pub fn backfill_igc_nologin() -> ApiError {
+    ApiError::MissingAuthentication
+}
+
 #[post("/flights/<id>", data = "<data>")]
 pub async fn edit(
     user: auth::AuthUser,
@@ -955,6 +1141,8 @@ pub fn api_routes() -> Vec<Route> {
         add_nologin,
         edit,
         edit_nologin,
+        backfill_igc,
+        backfill_igc_nologin,
         delete,
         delete_nologin,
         igc_download,
@@ -971,6 +1159,8 @@ mod tests {
         models::{NewFlight, NewGlider},
         test_utils::{make_test_config, DbTestContext},
     };
+
+    use diesel_geography::types::GeogPoint;
 
     use super::*;
 
@@ -1112,5 +1302,148 @@ mod tests {
             .cookie(ctx.username_cookie())
             .dispatch();
         assert_eq!(resp.status(), Status::BadRequest);
+    }
+
+    /// Back-fill flight fields from stored IGC data via the API.
+    #[test]
+    fn backfill_igc() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+        let ctx = DbTestContext::new();
+        let client = make_client();
+
+        // Create a flight without glider, sites, crew or altitude metrics,
+        // with an IGC file referencing glider "VH-BFT" and flying from
+        // 48.0N / 11.0E.
+        let igc = "\
+HFGTYGLIDERTYPE: DG-505
+HFGIDGLIDERID: VH-BFT
+HFPLTPILOTINCHARGE: Bea Pilot
+B1000004800000N01100000EA0100001000
+B1001004800000N01100000EA0200002000
+B1002004800000N01100000EA0150001500";
+        let body = format!(
+            r#"{{
+                "launchDate": "2026-11-19",
+                "launchTime": "10:00:00",
+                "landingTime": "11:00:00",
+                "igcData": "{}"
+            }}"#,
+            URL_SAFE_NO_PAD.encode(igc)
+        );
+        let resp = client
+            .post("/flights")
+            .header(ContentType::JSON)
+            .body(body)
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Created);
+
+        // Without gliders or locations, nothing can be back-filled
+        let resp = client
+            .post("/flights/backfill_igc")
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let result: ApiBackfillResult = resp.into_json().expect("body");
+        assert_eq!(
+            result,
+            ApiBackfillResult {
+                flights_scanned: 1,
+                // Crew and altitude metrics can be filled from the IGC data
+                // alone, so the flight is already updated in this run.
+                flights_updated: 1,
+                gliders_set: 0,
+                locations_set: 0,
+                crew_set: 1, // P1 name from the IGC header
+                altitudes_set: 2,
+            }
+        );
+
+        // Now add the glider referenced in the IGC file and a location at the
+        // launch/landing coordinates, after the fact.
+        let glider = data::create_glider(
+            &mut *ctx.force_get_conn(),
+            NewGlider {
+                user_id: ctx.testuser1.user.id,
+                manufacturer: "DG".into(),
+                model: "DG-505".into(),
+                registration: Some("VH-BFT".into()),
+                ..Default::default()
+            },
+        )
+        .expect("Could not create glider");
+        let location = data::create_location(
+            &mut *ctx.force_get_conn(),
+            crate::models::NewLocation {
+                name: "Nearest site".into(),
+                country: "DE".into(),
+                elevation: 500,
+                user_id: ctx.testuser1.user.id,
+                geog: Some(GeogPoint {
+                    x: 11.0,
+                    y: 48.0,
+                    srid: None,
+                }),
+            },
+        );
+
+        // Back-fill again: glider and sites can be filled now
+        // (crew fields and altitude metrics are already set and remain untouched).
+        let resp = client
+            .post("/flights/backfill_igc")
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let result: ApiBackfillResult = resp.into_json().expect("body");
+        assert_eq!(
+            result,
+            ApiBackfillResult {
+                flights_scanned: 1,
+                flights_updated: 1,
+                gliders_set: 1,
+                locations_set: 2,
+                crew_set: 0,
+                altitudes_set: 0,
+            }
+        );
+
+        // Assert the flight was updated
+        let flights = data::get_flights_for_user(&mut *ctx.force_get_conn(), &ctx.testuser1.user);
+        assert_eq!(flights.len(), 1);
+        let flight = &flights[0];
+        assert_eq!(flight.glider_id, Some(glider.id));
+        assert_eq!(flight.launch_at, Some(location.id));
+        assert_eq!(flight.landing_at, Some(location.id));
+        assert_eq!(flight.pilot_in_command.as_deref(), Some("Bea Pilot"));
+        assert_eq!(flight.max_altitude_m, Some(2000));
+        assert_eq!(flight.height_gain_m, Some(1000));
+
+        // A second run changes nothing (idempotent)
+        let resp = client
+            .post("/flights/backfill_igc")
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let result: ApiBackfillResult = resp.into_json().expect("body");
+        assert_eq!(
+            result,
+            ApiBackfillResult {
+                flights_scanned: 1,
+                flights_updated: 0,
+                gliders_set: 0,
+                locations_set: 0,
+                crew_set: 0,
+                altitudes_set: 0,
+            }
+        );
+
+        // Endpoint requires authentication
+        let resp = client.post("/flights/backfill_igc").dispatch();
+        assert_eq!(resp.status(), Status::Unauthorized);
     }
 }

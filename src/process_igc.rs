@@ -18,20 +18,20 @@ use serde::Serialize;
 
 use crate::{auth, data, models};
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 struct LatLng {
     lat: f64,
     lng: f64,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LaunchLandingInfo {
-    pos: LatLng,
-    alt: i16,
-    time_hms: (u8, u8, u8),
+pub(crate) struct LaunchLandingInfo {
+    pub(crate) pos: LatLng,
+    pub(crate) alt: i16,
+    pub(crate) time_hms: (u8, u8, u8),
     #[serde(skip_serializing_if = "Option::is_none")]
-    location_id: Option<i32>,
+    pub(crate) location_id: Option<i32>,
 }
 
 #[derive(Default, Debug, PartialEq, Serialize)]
@@ -39,41 +39,41 @@ struct LaunchLandingInfo {
 pub struct FlightInfo {
     /// Name of the pilot, as configured in the flight instrument.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pilot: Option<String>,
+    pub(crate) pilot: Option<String>,
     /// Name of the pilot in command (P1), from the HFPLTPILOTINCHARGE header.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pilot_in_command: Option<String>,
+    pub(crate) pilot_in_command: Option<String>,
     /// Name of the second crew member (P2), from the HFCM2CREW2 header.
     #[serde(skip_serializing_if = "Option::is_none")]
-    second_pilot: Option<String>,
+    pub(crate) second_pilot: Option<String>,
     /// Name of the glider, as configured in the flight instrument.
     #[serde(skip_serializing_if = "Option::is_none")]
-    glidertype: Option<String>,
+    pub(crate) glidertype: Option<String>,
     /// Glider registration / ID, from the HFGIDGLIDERID header.
     #[serde(skip_serializing_if = "Option::is_none")]
-    gliderid: Option<String>,
+    pub(crate) gliderid: Option<String>,
     /// Name of the launch site, as configured in the flight instrument.
     #[serde(skip_serializing_if = "Option::is_none")]
-    site: Option<String>,
+    pub(crate) site: Option<String>,
     /// Date of flight (YYYY, MM, DD).
     #[serde(skip_serializing_if = "Option::is_none")]
-    date_ymd: Option<(u16, u8, u8)>,
+    pub(crate) date_ymd: Option<(u16, u8, u8)>,
     /// Lauch infos.
     #[serde(skip_serializing_if = "Option::is_none")]
-    launch: Option<LaunchLandingInfo>,
+    pub(crate) launch: Option<LaunchLandingInfo>,
     /// Landing infos.
     #[serde(skip_serializing_if = "Option::is_none")]
-    landing: Option<LaunchLandingInfo>,
+    pub(crate) landing: Option<LaunchLandingInfo>,
     /// Track length in kilometers.
-    track_distance: f64,
+    pub(crate) track_distance: f64,
     /// Maximum barometric altitude above mean sea level, in metres.
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_altitude_m: Option<i32>,
+    pub(crate) max_altitude_m: Option<i32>,
     /// Barometric height gain from launch to the highest point, in metres.
     #[serde(skip_serializing_if = "Option::is_none")]
-    height_gain_m: Option<i32>,
+    pub(crate) height_gain_m: Option<i32>,
     /// Whether the flight landed away from a known location.
-    is_outlanding: bool,
+    pub(crate) is_outlanding: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -262,6 +262,12 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
         .is_some_and(|landing| landing.location_id.is_none());
 
     FlightInfoResult::Success(info)
+}
+
+/// Parse in-memory IGC data for the specified user, return parsed data.
+pub fn parse_igc_data(data: &[u8], user: &models::User, db: &mut diesel::PgConnection) -> FlightInfoResult {
+    let buf_reader = BufReader::new(Cursor::new(data));
+    parse_igc(buf_reader, user, db)
 }
 
 /// Process IGC file, return parsed data.

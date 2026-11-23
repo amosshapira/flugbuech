@@ -294,6 +294,46 @@ export async function editApiFlight(flightId: number, flight: NewApiFlight): Pro
     }
 }
 
+export interface BackfillIgcResult {
+    readonly flightsScanned: number;
+    readonly flightsUpdated: number;
+    readonly glidersSet: number;
+    readonly locationsSet: number;
+    readonly crewSet: number;
+    readonly altitudesSet: number;
+}
+
+const SCHEMA_API_BACKFILL_RESULT = z.object({
+    flightsScanned: z.number(),
+    flightsUpdated: z.number(),
+    glidersSet: z.number(),
+    locationsSet: z.number(),
+    crewSet: z.number(),
+    altitudesSet: z.number(),
+});
+
+/**
+ * Back-fill flight fields from the stored IGC files of the current user.
+ *
+ * Only empty fields are filled (glider, launch/landing site, crew, max
+ * altitude, height gain); existing values are never overwritten.
+ */
+export async function apiBackfillIgc(): Promise<BackfillIgcResult> {
+    const response = await apiPost('/api/v1/flights/backfill_igc', {});
+    switch (response.status) {
+        case 200:
+            return SCHEMA_API_BACKFILL_RESULT.parse(await response.json());
+        case 401:
+            throw new SubmitError('API authentication failed', {type: 'authentication'});
+        default: {
+            throw new SubmitError('API error', {
+                type: 'api-error',
+                message: await extractResponseError(response),
+            });
+        }
+    }
+}
+
 export class SubmitError extends Error {
     public constructor(
         message: string,

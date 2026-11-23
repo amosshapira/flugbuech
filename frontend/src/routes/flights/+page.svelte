@@ -15,6 +15,7 @@
 
   import type {Data} from './+page';
   import type {FlightListItem} from './api';
+  import {apiBackfillIgc, type BackfillIgcResult, SubmitError} from './api';
 
   export let data: Data;
 
@@ -22,7 +23,43 @@
 
   let flightToDelete: FlightListItem | undefined;
   let deleting = false;
+  let backfilling = false;
+  let backfillError: {type: 'authentication'} | {type: 'api-error'; message: string} | undefined;
   let deleteError: {type: 'authentication'} | {type: 'api-error'; message: string} | undefined;
+
+  /**
+   * Re-parse the stored IGC files and back-fill empty flight fields (glider,
+   * launch/landing site, crew, max altitude, height gain).
+   */
+  async function backfillFromIgc(): Promise<void> {
+    backfilling = true;
+    backfillError = undefined;
+    try {
+      const result: BackfillIgcResult = await apiBackfillIgc();
+      addFlash({
+        message: $i18n.t('flights.prose--backfill-success', {
+          flights: result.flightsUpdated,
+          gliders: result.glidersSet,
+          locations: result.locationsSet,
+          crew: result.crewSet,
+          altitudes: result.altitudesSet,
+        }),
+        severity: result.flightsUpdated > 0 ? 'success' : 'info',
+        icon: 'fa-circle-check',
+      });
+      await invalidateAll();
+    } catch (error) {
+      if (error instanceof SubmitError && error.data.type === 'authentication') {
+        backfillError = {type: 'authentication'};
+      } else if (error instanceof SubmitError) {
+        backfillError = error.data;
+      } else {
+        backfillError = {type: 'api-error', message: `${error}`};
+      }
+    } finally {
+      backfilling = false;
+    }
+  }
 
   function flightListItemName(f: FlightListItem): string {
     return flightName(
@@ -78,7 +115,28 @@
   }
 </script>
 
-{#if deleteError?.type === 'authentication'}
+{#if backfillError?.type === 'authentication'}
+  <MessageModal
+    type="warning"
+    title={$i18n.t('common.error--authentication-error')}
+    message={$i18n.t('common.error--login-session-expired')}
+    showClose={false}
+  >
+    <section slot="buttons">
+      <a href="/auth/login/" class="button is-warning">
+        {$i18n.t('navigation.login')}
+      </a>
+    </section>
+  </MessageModal>
+{:else if backfillError?.type === 'api-error'}
+  <MessageModal
+    type="error"
+    title={$i18n.t('common.error--api-error')}
+    message={$i18n.t('flights.error--backfill-error', {message: backfillError.message})}
+    showClose={true}
+    on:closed={() => (backfillError = undefined)}
+  />
+{:else if deleteError?.type === 'authentication'}
   <MessageModal
     type="warning"
     title={$i18n.t('common.error--authentication-error')}
@@ -136,6 +194,14 @@
     <a href="/flights/add/" class="button is-primary">
       {$i18n.t('flights.action--add-flight')}
     </a>
+    <button
+      class="button is-light"
+      disabled={backfilling}
+      title={$i18n.t('flights.hint--backfill-igc')}
+      on:click={() => void backfillFromIgc()}
+    >
+      {$i18n.t('flights.action--backfill-igc')}
+    </button>
     <a href="/flights/import/csv/" class="button is-light"
       >{$i18n.t('flights.action--import-csv')}</a
     >
