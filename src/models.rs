@@ -66,9 +66,10 @@ pub struct Glider {
 
 impl Display for Glider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{} {}", self.manufacturer, self.model)?;
         if let Some(ref registration) = self.registration {
-            write!(f, " ({})", registration)?;
+            write!(f, "{} ({})", registration, self.model)?;
+        } else {
+            write!(f, "{}", self.model)?;
         }
         Ok(())
     }
