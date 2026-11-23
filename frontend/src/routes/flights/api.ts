@@ -168,6 +168,10 @@ const SCHEMA_API_IGC_METADATA = z.object({
      */
     glidertype: z.string().optional(),
     /**
+     * Glider registration / ID, from the HFGIDGLIDERID header.
+     */
+    gliderid: z.string().optional(),
+    /**
      * Name of the launch site, as configured in the flight instrument.
      */
     site: z.string().optional(),

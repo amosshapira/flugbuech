@@ -25,6 +25,7 @@
     FLIGHT_CAPACITIES,
     LAUNCH_TYPES,
     type FlightCapacity,
+    type IgcMetadata,
     type LaunchType,
   } from './api';
 
@@ -43,6 +44,10 @@
     flight?.number ??
     (existingFlightNumbers.length > 0 ? Math.max(...existingFlightNumbers) + 1 : null);
   let glider: number | undefined = flight?.gliderId ?? lastGliderId;
+  // The glider selection defaults to the flight's glider or the last used
+  // glider. A glider matching the uploaded IGC file is only auto-selected
+  // while the selection is still on this initial value.
+  const initialGlider = glider;
   // Note: For the select input value binding to work correctly, entries from `locations` must be
   // used, even if they're compatible with the type included in the flight data.
   let launchAt: FlightLocation | undefined = locations.find(
@@ -343,6 +348,31 @@
     return `${h}:${m}`;
   }
 
+  /**
+   * Try to match the glider referenced in an IGC file (registration from
+   * HFGIDGLIDERID, type/model from HFGTYGLIDERTYPE) against the user's
+   * gliders. Only returns a glider if the match is unambiguous.
+   */
+  function matchIgcGlider(metadata: IgcMetadata): Glider | undefined {
+    const normalize = (s: string) => s.trim().toLocaleLowerCase();
+    const registration = metadata.gliderid?.trim().toLocaleLowerCase();
+    const gliderType = metadata.glidertype?.trim().toLocaleLowerCase();
+
+    let candidates: Glider[] = [];
+    if (registration) {
+      candidates = gliders.filter(
+        (g) => g.registration !== undefined && normalize(g.registration) === registration,
+      );
+    }
+    if (candidates.length === 0 && gliderType) {
+      candidates = gliders.filter((g) => {
+        const model = normalize(g.model);
+        return model === gliderType || model.includes(gliderType) || gliderType.includes(model);
+      });
+    }
+    return candidates.length === 1 ? candidates[0] : undefined;
+  }
+
   // Handle file uploads
   function onFileInputChange(): void {
     // Ensure that file is present
@@ -402,6 +432,14 @@
         }
         if (secondPilot === '' && igcMetadata.secondPilot !== undefined) {
           secondPilot = igcMetadata.secondPilot;
+        }
+
+        // Determine glider
+        if (glider === initialGlider) {
+          const matchedGlider = matchIgcGlider(igcMetadata);
+          if (matchedGlider !== undefined) {
+            glider = matchedGlider.id;
+          }
         }
 
         // Determine soaring metrics

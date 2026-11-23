@@ -1,4 +1,6 @@
 <script lang="ts">
+  import {onMount} from 'svelte';
+
   import {apiDelete, extractResponseError} from '$lib/api';
   import DialogModal from '$lib/components/DialogModal.svelte';
   import Flashes from '$lib/components/Flashes.svelte';
@@ -15,6 +17,21 @@
   export let data: Data;
 
   let flashes: Flashes;
+
+  const SHOW_ALL_COLUMNS_STORAGE_KEY = 'flugbuech-gliders-show-all-columns';
+
+  /**
+   * Whether to show the extended columns (Manufacturer, Since, Until).
+   * Hidden by default, the choice is remembered in localStorage.
+   */
+  let showAllColumns = false;
+  onMount(() => {
+    showAllColumns = localStorage.getItem(SHOW_ALL_COLUMNS_STORAGE_KEY) === 'true';
+  });
+  function toggleColumns(): void {
+    showAllColumns = !showAllColumns;
+    localStorage.setItem(SHOW_ALL_COLUMNS_STORAGE_KEY, showAllColumns ? 'true' : 'false');
+  }
 
   let gliderToDelete: Glider | undefined;
   let deleting = false;
@@ -122,19 +139,31 @@
   <p class="content">
     {$i18n.t('gliders.prose--glider-count', {count: data.gliders.length})}
   </p>
-  <p class="content">
+  <p class="content gliders-actions">
     <a href="/gliders/add/" class="button is-primary">
       {$i18n.t('gliders.action--add-glider')}
     </a>
+    <button class="button is-small is-text" on:click={toggleColumns}>
+      {#if showAllColumns}
+        {$i18n.t('gliders.action--show-fewer-columns')}
+      {:else}
+        {$i18n.t('gliders.action--show-more-columns')}
+      {/if}
+    </button>
   </p>
   <div class="table-container">
     <table class="table is-fullwidth is-striped is-hoverable">
       <thead>
         <tr>
-          <th>{$i18n.t('gliders.column--manufacturer')}</th>
+          {#if showAllColumns}
+            <th>{$i18n.t('gliders.column--manufacturer')}</th>
+          {/if}
           <th>{$i18n.t('gliders.column--model')}</th>
-          <th>{$i18n.t('gliders.column--since')}</th>
-          <th>{$i18n.t('gliders.column--until')}</th>
+          <th>{$i18n.t('gliders.column--registration')}</th>
+          {#if showAllColumns}
+            <th>{$i18n.t('gliders.column--since')}</th>
+            <th>{$i18n.t('gliders.column--until')}</th>
+          {/if}
           <th>{$i18n.t('gliders.column--flights')}</th>
           <th>{$i18n.t('gliders.column--hours')}</th>
           <th>{$i18n.t('gliders.column--actions')}</th>
@@ -143,27 +172,35 @@
       <tbody>
         {#each data.gliders as glider (glider.id)}
           <tr>
-            <td>{glider.manufacturer}</td>
+            {#if showAllColumns}
+              <td>{glider.manufacturer}</td>
+            {/if}
             <td>
               {glider.model}
-              {#if glider.registration || glider.competitionId}
-                <br />
-                <small>
-                  {glider.registration ?? ''}{#if glider.registration && glider.competitionId}
-                    &middot;{/if}{glider.competitionId ? `[${glider.competitionId}]` : ''}
-                </small>
-              {/if}
               {#if glider.faiClass}
                 <br />
                 <small>{glider.faiClass}</small>
               {/if}
             </td>
             <td>
-              {#if glider.since !== undefined}{glider.since}{:else}-{/if}
+              {#if glider.registration || glider.competitionId}
+                {glider.registration ?? ''}
+                {#if glider.competitionId}
+                  <br />
+                  <small>[{glider.competitionId}]</small>
+                {/if}
+              {:else}
+                -
+              {/if}
             </td>
-            <td>
-              {#if glider.until !== undefined}{glider.until}{:else}-{/if}
-            </td>
+            {#if showAllColumns}
+              <td>
+                {#if glider.since !== undefined}{glider.since}{:else}-{/if}
+              </td>
+              <td>
+                {#if glider.until !== undefined}{glider.until}{:else}-{/if}
+              </td>
+            {/if}
             <td>
               {#if glider.stats.flights > 0}{glider.stats.flights}{:else}-{/if}
             </td>
@@ -218,6 +255,12 @@
 
   table button:hover i {
     color: #c41e1e;
+  }
+
+  .gliders-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
 
   .incomplete-warning {

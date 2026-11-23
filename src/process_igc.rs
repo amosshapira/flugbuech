@@ -49,6 +49,9 @@ pub struct FlightInfo {
     /// Name of the glider, as configured in the flight instrument.
     #[serde(skip_serializing_if = "Option::is_none")]
     glidertype: Option<String>,
+    /// Glider registration / ID, from the HFGIDGLIDERID header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gliderid: Option<String>,
     /// Name of the launch site, as configured in the flight instrument.
     #[serde(skip_serializing_if = "Option::is_none")]
     site: Option<String>,
@@ -150,6 +153,9 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
             }
             Ok(Record::H(h @ HRecord { mnemonic: "GTY", .. })) => {
                 info.glidertype = Some(h.data.trim().into());
+            }
+            Ok(Record::H(h @ HRecord { mnemonic: "GID", .. })) => {
+                info.gliderid = Some(h.data.trim().into());
             }
             Ok(Record::H(h @ HRecord { mnemonic: "SIT", .. })) => {
                 info.site = Some(h.data.trim().into());
@@ -363,6 +369,8 @@ mod tests {
     #[test]
     fn parse_sailplane_crew_and_altitudes() {
         let data = "\
+HFGTYGLIDERTYPE: ASK 21
+HFGIDGLIDERID: VH-ASK
 HFPLTPILOTINCHARGE: Alex Doe
 HFCM2CREW2: Sam Instructor
 B1200004800000N01100000EA0100001500
@@ -370,6 +378,8 @@ B1201004800000N01100000EA0160001600
 B1202004800000N01100000EA0140001400";
         let info = process(data).unwrap();
         assert_eq!(info.pilot, None);
+        assert_eq!(info.glidertype, Some("ASK 21".to_string()));
+        assert_eq!(info.gliderid, Some("VH-ASK".to_string()));
         assert_eq!(info.pilot_in_command, Some("Alex Doe".to_string()));
         assert_eq!(info.second_pilot, Some("Sam Instructor".to_string()));
         assert_eq!(info.max_altitude_m, Some(1600));
