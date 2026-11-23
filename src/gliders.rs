@@ -13,6 +13,14 @@ use crate::{
 
 // Forms
 
+/// Valid FAI classes for sailplanes.
+const FAI_CLASSES: [&str; 7] = ["Club", "Standard", "15m", "18m", "20m", "Open", "Two-Seater"];
+
+/// Convert empty or whitespace-only optional strings to `None`.
+fn empty_to_none(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct GliderCreateUpdateForm {
@@ -28,6 +36,47 @@ pub struct GliderCreateUpdateForm {
     cost: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    registration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    competition_id: Option<String>,
+    #[serde(default)]
+    is_two_seater: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fai_class: Option<String>,
+    #[serde(default)]
+    is_motorglider: bool,
+}
+
+impl GliderCreateUpdateForm {
+    /// Validate the sailplane-specific fields and normalize blank strings to `None`.
+    fn validated(mut self) -> Result<Self, String> {
+        self.registration = empty_to_none(self.registration);
+        self.competition_id = empty_to_none(self.competition_id);
+        self.fai_class = empty_to_none(self.fai_class);
+
+        if self
+            .registration
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 16)
+        {
+            return Err("Registration must not exceed 16 characters".into());
+        }
+        if self
+            .competition_id
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 8)
+        {
+            return Err("Competition ID must not exceed 8 characters".into());
+        }
+        if let Some(ref fai_class) = self.fai_class {
+            if !FAI_CLASSES.contains(&fai_class.as_str()) {
+                return Err(format!("Invalid FAI class: {}", fai_class));
+            }
+        }
+
+        Ok(self)
+    }
 }
 
 // API types
@@ -48,6 +97,14 @@ pub struct ApiGlider {
     cost: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    registration: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    competition_id: Option<String>,
+    is_two_seater: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fai_class: Option<String>,
+    is_motorglider: bool,
     stats: ApiGliderStats,
 }
 
@@ -62,6 +119,11 @@ impl From<GliderWithStats> for ApiGlider {
             source: glider.source,
             cost: glider.cost,
             comment: glider.comment,
+            registration: glider.registration,
+            competition_id: glider.competition_id,
+            is_two_seater: glider.is_two_seater,
+            fai_class: glider.fai_class,
+            is_motorglider: glider.is_motorglider,
             stats: ApiGliderStats {
                 flights: glider.flights,
                 seconds: glider.seconds,
@@ -126,6 +188,12 @@ pub async fn add(
     log::debug!("gliders::add");
     let user = user.into_inner();
 
+    // Validate input
+    let data = match data.into_inner().validated() {
+        Ok(data) => data,
+        Err(msg) => return Err(RocketError::new(Status::BadRequest, "BadRequest", msg)),
+    };
+
     // Destructure data
     let GliderCreateUpdateForm {
         manufacturer,
@@ -135,7 +203,12 @@ pub async fn add(
         source,
         cost,
         comment,
-    } = data.into_inner();
+        registration,
+        competition_id,
+        is_two_seater,
+        fai_class,
+        is_motorglider,
+    } = data;
 
     // Create model
     let glider = NewGlider {
@@ -147,6 +220,11 @@ pub async fn add(
         source,
         cost,
         comment,
+        registration,
+        competition_id,
+        is_two_seater,
+        fai_class,
+        is_motorglider,
     };
 
     // Create database entry
@@ -186,6 +264,9 @@ pub async fn edit(
 ) -> Result<Status, Status> {
     let user = user.into_inner();
 
+    // Validate input
+    let data = data.into_inner().validated().map_err(|_| Status::BadRequest)?;
+
     // Get glider
     let mut glider = database
         .run(move |db| data::get_glider_by_id(db, id))
@@ -207,7 +288,12 @@ pub async fn edit(
         source,
         cost,
         comment,
-    } = data.into_inner();
+        registration,
+        competition_id,
+        is_two_seater,
+        fai_class,
+        is_motorglider,
+    } = data;
     glider.manufacturer = manufacturer;
     glider.model = model;
     glider.since = since.and_then(|strval| NaiveDate::parse_from_str(&strval, "%Y-%m-%d").ok());
@@ -215,6 +301,11 @@ pub async fn edit(
     glider.source = source;
     glider.cost = cost;
     glider.comment = comment;
+    glider.registration = registration;
+    glider.competition_id = competition_id;
+    glider.is_two_seater = is_two_seater;
+    glider.fai_class = fai_class;
+    glider.is_motorglider = is_motorglider;
 
     // Update database
     database.run(move |db| data::update_glider(db, &glider)).await;
@@ -368,6 +459,82 @@ mod tests {
     }
 
     #[test]
+    fn add_identical_models_with_different_registrations() {
+        let ctx = DbTestContext::new();
+        let client = make_client();
+
+        macro_rules! add_glider {
+            ($body:expr) => {
+                client
+                    .post("/gliders")
+                    .header(ContentType::JSON)
+                    .body($body)
+                    .private_cookie(ctx.auth_cookie_user1())
+                    .cookie(ctx.username_cookie())
+                    .dispatch()
+            };
+        }
+
+        // Two club ASK-21s with different registrations
+        let resp =
+            add_glider!(r#"{"manufacturer": "Schleicher", "model": "ASK 21", "registration": "VH-SXQ"}"#);
+        assert_eq!(resp.status(), Status::Created);
+        let resp =
+            add_glider!(r#"{"manufacturer": "Schleicher", "model": "ASK 21", "registration": "VH-NKC"}"#);
+        assert_eq!(resp.status(), Status::Created);
+        assert_eq!(
+            data::get_gliders_for_user(&mut *ctx.force_get_conn(), &ctx.testuser1.user).len(),
+            2,
+        );
+
+        // Unregistered duplicates are still rejected
+        let resp = add_glider!(r#"{"manufacturer": "Advance", "model": "Epsilon 8"}"#);
+        assert_eq!(resp.status(), Status::Created);
+        let resp = add_glider!(r#"{"manufacturer": "Advance", "model": "Epsilon 8"}"#);
+        assert_eq!(resp.status(), Status::Conflict);
+    }
+
+    #[test]
+    fn add_glider_validates_sailplane_fields() {
+        let ctx = DbTestContext::new();
+        let client = make_client();
+
+        let add_glider = |body: String| {
+            client
+                .post("/gliders")
+                .header(ContentType::JSON)
+                .body(body)
+                .private_cookie(ctx.auth_cookie_user1())
+                .cookie(ctx.username_cookie())
+                .dispatch()
+        };
+
+        // Unknown FAI class
+        let resp = add_glider(
+            r#"{"manufacturer": "Schleicher", "model": "ASK 21", "faiClass": "Unlimited"}"#.into(),
+        );
+        assert_eq!(resp.status(), Status::BadRequest);
+
+        // Registration is too long (VARCHAR(16))
+        let resp = add_glider(
+            r#"{"manufacturer": "Schleicher", "model": "ASK 21", "registration": "12345678901234567"}"#
+                .into(),
+        );
+        assert_eq!(resp.status(), Status::BadRequest);
+
+        // Blank optional fields are stored as NULL
+        let resp = add_glider(
+            r#"{"manufacturer": "Schleicher", "model": "ASK 21", "registration": "  ", "competitionId": ""}"#
+                .into(),
+        );
+        assert_eq!(resp.status(), Status::Created);
+        let gliders = data::get_gliders_for_user(&mut *ctx.force_get_conn(), &ctx.testuser1.user);
+        assert_eq!(gliders.len(), 1);
+        assert_eq!(gliders[0].registration, None);
+        assert_eq!(gliders[0].competition_id, None);
+    }
+
+    #[test]
     fn add_glider_data() {
         let ctx = DbTestContext::new();
         let client = make_client();
@@ -390,7 +557,7 @@ mod tests {
 
         // Add glider
         let resp = add_glider!(
-            r#"{"manufacturer": "Ozone", "model": "Enzo 2", "since": "2019-02-03", "until": "2019-11-20", "source": "Flycenter", "cost": 3344, "comment": "Sold it to Peter."}"#,
+            r#"{"manufacturer": "Ozone", "model": "Enzo 2", "since": "2019-02-03", "until": "2019-11-20", "source": "Flycenter", "cost": 3344, "comment": "Sold it to Peter.", "registration": "VH-GOB", "competitionId": "GOB", "isTwoSeater": true, "faiClass": "15m", "isMotorglider": false}"#,
             ctx.auth_cookie_user1()
         );
         assert_eq!(resp.status(), Status::Created);
@@ -405,6 +572,11 @@ mod tests {
         assert_eq!(g[0].source, Some("Flycenter".into()));
         assert_eq!(g[0].cost, Some(3344));
         assert_eq!(g[0].comment, Some("Sold it to Peter.".into()));
+        assert_eq!(g[0].registration, Some("VH-GOB".into()));
+        assert_eq!(g[0].competition_id, Some("GOB".into()));
+        assert!(g[0].is_two_seater);
+        assert_eq!(g[0].fai_class, Some("15m".into()));
+        assert!(!g[0].is_motorglider);
     }
 
     #[test]

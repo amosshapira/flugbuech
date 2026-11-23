@@ -14,6 +14,11 @@ const SCHEMA_API_GLIDER = z.object({
     source: z.string().optional(),
     cost: z.number().optional(),
     comment: z.string().optional(),
+    registration: z.string().optional(),
+    competitionId: z.string().optional(),
+    isTwoSeater: z.boolean().default(false),
+    faiClass: z.string().optional(),
+    isMotorglider: z.boolean().default(false),
     stats: z.object({
         flights: z.number(),
         seconds: z.number(),
@@ -22,6 +27,11 @@ const SCHEMA_API_GLIDER = z.object({
 });
 
 export type Glider = z.infer<typeof SCHEMA_API_GLIDER>;
+
+/** FAI sailplane classes supported by the glider form. */
+export const FAI_CLASSES = ['Club', 'Standard', '15m', '18m', '20m', 'Open', 'Two-Seater'] as const;
+
+export type FaiClass = (typeof FAI_CLASSES)[number];
 
 const SCHEMA_API_GLIDERS_RESPONSE = z.object({
     gliders: z.array(SCHEMA_API_GLIDER),

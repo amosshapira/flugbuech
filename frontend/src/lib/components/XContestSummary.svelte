@@ -4,6 +4,7 @@ Render a XContest flight summary, with icon, distance and link.
 <script lang="ts">
   import {formatDistance} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
+  import {units} from '$lib/units';
   import {tracktypeName, type XContestTracktype} from '$lib/xcontest';
 
   import XContestTracktypeIcon from './XContestTracktypeIcon.svelte';
@@ -37,7 +38,7 @@ Render a XContest flight summary, with icon, distance and link.
       <XContestTracktypeIcon {tracktype} />
     {/if}
     {#if distance}
-      {formatDistance(distance)}
+      {formatDistance(distance, $units.distanceUnit)}
     {:else if tracktype}
       {tracktypeName(tracktype)}
     {:else}
@@ -49,7 +50,7 @@ Render a XContest flight summary, with icon, distance and link.
     <XContestTracktypeIcon {tracktype} />
   {/if}
   {#if distance}
-    {formatDistance(distance)}
+    {formatDistance(distance, $units.distanceUnit)}
   {:else if tracktype}
     {tracktypeName(tracktype)}
   {:else}

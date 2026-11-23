@@ -3,6 +3,7 @@
   import Flashes from '$lib/components/Flashes.svelte';
   import {formatDuration} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
+  import {formatDistanceValue, units} from '$lib/units';
 
   import type {Data} from './+page';
 
@@ -51,12 +52,14 @@
                   {#if stats.flightSeconds}{formatDuration(stats.flightSeconds)} h{:else}?{/if}
                 </td>
                 <td>
-                  {stats.distance.track} km{#if stats.distanceTrackIncomplete}&nbsp;<sup
+                  {formatDistanceValue(stats.distance.track, $units.distanceUnit)}
+                  {$units.distanceUnit}{#if stats.distanceTrackIncomplete}&nbsp;<sup
                       >{#if data.flightsWithoutLaunchTime > 0}2{:else}1{/if}</sup
                     >{/if}
                 </td>
                 <td
-                  >{stats.distance.scored} km{#if stats.distanceScoredIncomplete}&nbsp;<sup
+                  >{formatDistanceValue(stats.distance.scored, $units.distanceUnit)}
+                  {$units.distanceUnit}{#if stats.distanceScoredIncomplete}&nbsp;<sup
                       >{#if data.flightsWithoutLaunchTime > 0}2{:else}1{/if}</sup
                     >{/if}</td
                 >
@@ -71,8 +74,14 @@
               <td>{data.flightCountTotal}</td>
               <td>{data.hikeandflyCountTotal}</td>
               <td>{formatDuration(data.flightTimeTotal)}</td>
-              <td>{data.flightDistanceTotal.track} km</td>
-              <td>{data.flightDistanceTotal.scored} km</td>
+              <td
+                >{formatDistanceValue(data.flightDistanceTotal.track, $units.distanceUnit)}
+                {$units.distanceUnit}</td
+              >
+              <td
+                >{formatDistanceValue(data.flightDistanceTotal.scored, $units.distanceUnit)}
+                {$units.distanceUnit}</td
+              >
             </tr>
           </tbody>
         </table>

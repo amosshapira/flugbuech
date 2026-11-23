@@ -554,6 +554,7 @@ fn import_flights(
             comment: flight.comment,
             video_url: flight.video_url,
             hikeandfly: flight.hikeandfly,
+            ..Default::default()
         })
         .collect();
 
@@ -704,6 +705,7 @@ mod tests {
                 source: None,
                 cost: None,
                 comment: None,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -787,6 +789,7 @@ mod tests {
                 source: None,
                 cost: None,
                 comment: None,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -961,6 +964,7 @@ mod tests {
                 source: None,
                 cost: None,
                 comment: None,
+                ..Default::default()
             },
         )
         .unwrap();

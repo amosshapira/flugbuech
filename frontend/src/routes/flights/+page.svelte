@@ -9,6 +9,7 @@
   import {formatDate, formatDistance, formatDuration} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
   import {addFlash} from '$lib/stores';
+  import {formatAltitudeValue, units} from '$lib/units';
 
   import {goto, invalidateAll} from '$app/navigation';
 
@@ -165,7 +166,15 @@
               {#if flight.launchTime !== undefined}{formatDate(flight.launchTime)}{:else}-{/if}
             </td>
             <td class="no-wrap">{flight.gliderName ?? '-'}</td>
-            <td title={launchAt !== undefined ? `${launchAt.elevation} mASL` : ''}>
+            <td
+              title={launchAt !== undefined
+                ? `${formatAltitudeValue(launchAt.elevation, $units.altitudeUnit)} ${
+                    $units.altitudeUnit === 'm'
+                      ? $i18n.t('common.unit--m-asl')
+                      : $i18n.t('common.unit--ft-asl')
+                  }`
+                : ''}
+            >
               {#if launchAt}
                 <CountryFlag countryCode={launchAt.countryCode} />
                 <a class="subtle-link" href="/locations/{launchAt.id}">{launchAt.name}</a
@@ -175,7 +184,15 @@
                 -
               {/if}
             </td>
-            <td title={landingAt !== undefined ? `${landingAt.elevation} mASL` : ''}>
+            <td
+              title={landingAt !== undefined
+                ? `${formatAltitudeValue(landingAt.elevation, $units.altitudeUnit)} ${
+                    $units.altitudeUnit === 'm'
+                      ? $i18n.t('common.unit--m-asl')
+                      : $i18n.t('common.unit--ft-asl')
+                  }`
+                : ''}
+            >
               {#if landingAt}
                 <CountryFlag countryCode={landingAt.countryCode} />
                 <a class="subtle-link" href="/locations/{landingAt.id}">{landingAt.name}</a>
@@ -187,7 +204,10 @@
               {#if flight.durationSeconds}{formatDuration(flight.durationSeconds)}{:else}-{/if}
             </td>
             <td class="no-wrap">
-              {#if flight.trackDistance}{formatDistance(flight.trackDistance)}{:else}-{/if}
+              {#if flight.trackDistance}{formatDistance(
+                  flight.trackDistance,
+                  $units.distanceUnit,
+                )}{:else}-{/if}
             </td>
             <td class="no-wrap">
               <XContestSummary

@@ -1,6 +1,7 @@
 use std::fmt::{self, Display};
 
 use chrono::{DateTime, NaiveDate, Utc};
+use diesel::pg::data_types::PgInterval;
 use diesel::sql_types::{BigInt, Bool, Date, Double, Integer, Nullable, Text};
 use diesel::{Associations, Identifiable, Queryable};
 use diesel_geography::{sql_types::Geography, types::GeogPoint};
@@ -24,6 +25,10 @@ pub struct User {
     pub signed_up: DateTime<Utc>,
     /// Whether the user has opted in to receive news
     pub news_opt_in: bool,
+    /// Preferred unit for displaying altitudes ("m" or "ft")
+    pub altitude_unit: String,
+    /// Preferred unit for displaying distances ("km", "mi" or "nm")
+    pub distance_unit: String,
 }
 
 #[derive(Identifiable, Queryable, Associations, AsChangeset, Serialize, PartialEq, Debug, Clone)]
@@ -47,11 +52,25 @@ pub struct Glider {
     pub cost: Option<i32>,
     /// Add arbitrary comments about this glider
     pub comment: Option<String>,
+    /// Aircraft registration / tail number, e.g. "VH-GOB"
+    pub registration: Option<String>,
+    /// Competition ID / callsign, e.g. "GOB" or "GU"
+    pub competition_id: Option<String>,
+    /// Whether the glider has two seats
+    pub is_two_seater: bool,
+    /// FAI class, e.g. "Club", "Standard", "15m", "Open" or "Two-Seater"
+    pub fai_class: Option<String>,
+    /// Whether the glider is a motorglider (self-launching or sustainer)
+    pub is_motorglider: bool,
 }
 
 impl Display for Glider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "{} {}", self.manufacturer, self.model)
+        write!(f, "{} {}", self.manufacturer, self.model)?;
+        if let Some(ref registration) = self.registration {
+            write!(f, " ({})", registration)?;
+        }
+        Ok(())
     }
 }
 
@@ -77,6 +96,16 @@ pub struct GliderWithStats {
     pub cost: Option<i32>,
     #[diesel(sql_type = Nullable<Text>)]
     pub comment: Option<String>,
+    #[diesel(sql_type = Nullable<Text>)]
+    pub registration: Option<String>,
+    #[diesel(sql_type = Nullable<Text>)]
+    pub competition_id: Option<String>,
+    #[diesel(sql_type = Bool)]
+    pub is_two_seater: bool,
+    #[diesel(sql_type = Nullable<Text>)]
+    pub fai_class: Option<String>,
+    #[diesel(sql_type = Bool)]
+    pub is_motorglider: bool,
     #[diesel(sql_type = BigInt)]
     pub flights: i64,
     #[diesel(sql_type = BigInt)]
@@ -96,6 +125,11 @@ pub struct NewGlider {
     pub source: Option<String>,
     pub cost: Option<i32>,
     pub comment: Option<String>,
+    pub registration: Option<String>,
+    pub competition_id: Option<String>,
+    pub is_two_seater: bool,
+    pub fai_class: Option<String>,
+    pub is_motorglider: bool,
 }
 
 #[derive(Identifiable, Queryable, Associations, AsChangeset, Serialize, PartialEq, Debug, Clone)]
@@ -158,7 +192,7 @@ pub struct LocationWithCount {
     pub count: i64,
 }
 
-#[derive(Identifiable, Queryable, Associations, AsChangeset, Serialize, PartialEq, Debug, Clone)]
+#[derive(Identifiable, Queryable, Associations, AsChangeset, PartialEq, Debug, Clone)]
 #[diesel(treat_none_as_null = true)]
 #[diesel(belongs_to(User, foreign_key = user_id))]
 #[diesel(belongs_to(Glider, foreign_key = glider_id))]
@@ -197,9 +231,31 @@ pub struct Flight {
     pub created_at: DateTime<Utc>,
     /// Whether you hiked up to launch
     pub hikeandfly: bool,
+    /// Pilot in command (P1)
+    pub pilot_in_command: Option<String>,
+    /// Second pilot / instructor / student / passenger (P2)
+    pub second_pilot: Option<String>,
+    /// Operational role: PIC, Dual, Instructor or ICUS
+    pub flight_capacity: String,
+    /// Launch type: Aerotow, Winch, Car or Self-Launch
+    pub launch_type: Option<String>,
+    /// Release altitude above mean sea level, in metres
+    pub release_altitude_m: Option<i32>,
+    /// Height gained during the tow, in metres above the launch site
+    pub tow_height_m: Option<i32>,
+    /// Registration of the tow plane
+    pub tug_registration: Option<String>,
+    /// Maximum altitude above mean sea level, in metres
+    pub max_altitude_m: Option<i32>,
+    /// Total height gain, in metres
+    pub height_gain_m: Option<i32>,
+    /// Whether the flight ended in an outlanding
+    pub is_outlanding: bool,
+    /// Time the engine was running (motorgliders)
+    pub engine_run_time: Option<PgInterval>,
 }
 
-#[derive(Insertable, Default)]
+#[derive(Insertable)]
 #[diesel(table_name = flights)]
 pub struct NewFlight {
     /// The user-defined flight number
@@ -230,6 +286,60 @@ pub struct NewFlight {
     pub video_url: Option<String>,
     /// Whether you hiked up to launch
     pub hikeandfly: bool,
+    /// Pilot in command (P1)
+    pub pilot_in_command: Option<String>,
+    /// Second pilot / instructor / student / passenger (P2)
+    pub second_pilot: Option<String>,
+    /// Operational role: PIC, Dual, Instructor or ICUS
+    pub flight_capacity: String,
+    /// Launch type: Aerotow, Winch, Car or Self-Launch
+    pub launch_type: Option<String>,
+    /// Release altitude above mean sea level, in metres
+    pub release_altitude_m: Option<i32>,
+    /// Height gained during the tow, in metres above the launch site
+    pub tow_height_m: Option<i32>,
+    /// Registration of the tow plane
+    pub tug_registration: Option<String>,
+    /// Maximum altitude above mean sea level, in metres
+    pub max_altitude_m: Option<i32>,
+    /// Total height gain, in metres
+    pub height_gain_m: Option<i32>,
+    /// Whether the flight ended in an outlanding
+    pub is_outlanding: bool,
+    /// Time the engine was running (motorgliders)
+    pub engine_run_time: Option<PgInterval>,
+}
+
+impl Default for NewFlight {
+    fn default() -> Self {
+        Self {
+            number: None,
+            user_id: 0,
+            glider_id: None,
+            launch_at: None,
+            landing_at: None,
+            launch_time: None,
+            landing_time: None,
+            track_distance: None,
+            xcontest_tracktype: None,
+            xcontest_distance: None,
+            xcontest_url: None,
+            comment: None,
+            video_url: None,
+            hikeandfly: false,
+            pilot_in_command: None,
+            second_pilot: None,
+            flight_capacity: "PIC".into(),
+            launch_type: None,
+            release_altitude_m: None,
+            tow_height_m: None,
+            tug_registration: None,
+            max_altitude_m: None,
+            height_gain_m: None,
+            is_outlanding: false,
+            engine_run_time: None,
+        }
+    }
 }
 
 #[derive(Identifiable, Queryable, Insertable, PartialEq, Debug, Clone)]

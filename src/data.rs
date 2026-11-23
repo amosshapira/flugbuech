@@ -191,6 +191,21 @@ pub fn update_news_opt_in(conn: &mut PgConnection, user: &User, opt_in: bool) ->
         .get_result(conn)
 }
 
+/// Update a user's preferred display units, return the updated user model.
+pub fn update_units(
+    conn: &mut PgConnection,
+    user: &User,
+    altitude_unit: &str,
+    distance_unit: &str,
+) -> QueryResult<User> {
+    diesel::update(user)
+        .set((
+            users::altitude_unit.eq(altitude_unit),
+            users::distance_unit.eq(distance_unit),
+        ))
+        .get_result(conn)
+}
+
 pub fn get_glider_count(conn: &mut PgConnection) -> i64 {
     gliders::table
         .select(count(gliders::id))

@@ -40,6 +40,12 @@ pub struct FlightInfo {
     /// Name of the pilot, as configured in the flight instrument.
     #[serde(skip_serializing_if = "Option::is_none")]
     pilot: Option<String>,
+    /// Name of the pilot in command (P1), from the HFPLTPILOTINCHARGE header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pilot_in_command: Option<String>,
+    /// Name of the second crew member (P2), from the HFCM2CREW2 header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    second_pilot: Option<String>,
     /// Name of the glider, as configured in the flight instrument.
     #[serde(skip_serializing_if = "Option::is_none")]
     glidertype: Option<String>,
@@ -57,6 +63,14 @@ pub struct FlightInfo {
     landing: Option<LaunchLandingInfo>,
     /// Track length in kilometers.
     track_distance: f64,
+    /// Maximum barometric altitude above mean sea level, in metres.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_altitude_m: Option<i32>,
+    /// Barometric height gain from launch to the highest point, in metres.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height_gain_m: Option<i32>,
+    /// Whether the flight landed away from a known location.
+    is_outlanding: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -115,11 +129,24 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
     let mut projection: Option<FlatProjection<f64>> = None;
     let mut flight_path = FlatPointString::new();
 
+    // Barometric altitude tracking for soaring metrics
+    let mut launch_altitude_m: Option<i16> = None;
+    let mut max_altitude_m: Option<i16> = None;
+
     for line_bytes in &lines {
         let line = String::from_utf8_lossy(line_bytes);
         match Record::parse_line(line.trim()) {
             Ok(Record::H(h @ HRecord { mnemonic: "PLT", .. })) => {
-                info.pilot = Some(h.data.trim().into());
+                if h.friendly_name == Some("PILOTINCHARGE") {
+                    info.pilot_in_command = Some(h.data.trim().into());
+                } else {
+                    info.pilot = Some(h.data.trim().into());
+                }
+            }
+            Ok(Record::H(h @ HRecord { mnemonic: "CM2", .. })) => {
+                if h.friendly_name == Some("CREW2") {
+                    info.second_pilot = Some(h.data.trim().into());
+                }
             }
             Ok(Record::H(h @ HRecord { mnemonic: "GTY", .. })) => {
                 info.glidertype = Some(h.data.trim().into());
@@ -146,6 +173,16 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
                 }
             }
             Ok(Record::B(b)) => {
+                // Track barometric altitude for soaring metrics
+                if launch_altitude_m.is_none() {
+                    launch_altitude_m = Some(b.pressure_alt);
+                }
+                max_altitude_m = Some(
+                    max_altitude_m
+                        .map(|altitude| altitude.max(b.pressure_alt))
+                        .unwrap_or(b.pressure_alt),
+                );
+
                 // Extract raw float coordinates
                 let RawPosition {
                     lat: raw_lat,
@@ -191,6 +228,11 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
         }
     }
     info.track_distance = flight_path.length();
+    info.max_altitude_m = max_altitude_m.map(i32::from);
+    info.height_gain_m = match (max_altitude_m, launch_altitude_m) {
+        (Some(max), Some(launch)) => Some(i32::from(max.saturating_sub(launch))),
+        _ => None,
+    };
 
     // Find locations within 1000 meters of launch and landing
     let max_distance = 1000.0;
@@ -206,6 +248,12 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
                 .get(0)
                 .map(|location| location.id);
     }
+
+    // A landing away from any known location is considered an outlanding.
+    info.is_outlanding = info
+        .landing
+        .as_ref()
+        .is_some_and(|landing| landing.location_id.is_none());
 
     FlightInfoResult::Success(info)
 }
@@ -306,6 +354,29 @@ mod tests {
             info.track_distance < 1.98989,
             "Track distance is {:?}, not <1.98989",
             info.track_distance
+        );
+        assert_eq!(info.max_altitude_m, Some(1455));
+        assert_eq!(info.height_gain_m, Some(0));
+    }
+
+    /// Parse sailplane crew headers and compute barometric altitude metrics.
+    #[test]
+    fn parse_sailplane_crew_and_altitudes() {
+        let data = "\
+HFPLTPILOTINCHARGE: Alex Doe
+HFCM2CREW2: Sam Instructor
+B1200004800000N01100000EA0100001500
+B1201004800000N01100000EA0160001600
+B1202004800000N01100000EA0140001400";
+        let info = process(data).unwrap();
+        assert_eq!(info.pilot, None);
+        assert_eq!(info.pilot_in_command, Some("Alex Doe".to_string()));
+        assert_eq!(info.second_pilot, Some("Sam Instructor".to_string()));
+        assert_eq!(info.max_altitude_m, Some(1600));
+        assert_eq!(info.height_gain_m, Some(600));
+        assert!(
+            info.is_outlanding,
+            "Unknown landing location must be an outlanding"
         );
     }
 

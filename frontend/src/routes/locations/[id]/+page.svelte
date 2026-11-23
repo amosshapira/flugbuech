@@ -3,6 +3,7 @@
   import Flashes from '$lib/components/Flashes.svelte';
   import SingleMap from '$lib/components/SingleMap.svelte';
   import {i18n} from '$lib/i18n';
+  import {formatAltitudeValue, units} from '$lib/units';
 
   import type {Data} from './+page';
 
@@ -90,7 +91,12 @@
             'location.title--elevation',
           )}
         </th>
-        <td>{location.elevation} {$i18n.t('common.unit--m-asl')}</td>
+        <td
+          >{formatAltitudeValue(location.elevation, $units.altitudeUnit)}
+          {$units.altitudeUnit === 'm'
+            ? $i18n.t('common.unit--m-asl')
+            : $i18n.t('common.unit--ft-asl')}</td
+        >
       </tr>
       <tr>
         <th>

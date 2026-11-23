@@ -144,7 +144,20 @@
         {#each data.gliders as glider (glider.id)}
           <tr>
             <td>{glider.manufacturer}</td>
-            <td>{glider.model}</td>
+            <td>
+              {glider.model}
+              {#if glider.registration || glider.competitionId}
+                <br />
+                <small>
+                  {glider.registration ?? ''}{#if glider.registration && glider.competitionId}
+                    &middot;{/if}{glider.competitionId ? `[${glider.competitionId}]` : ''}
+                </small>
+              {/if}
+              {#if glider.faiClass}
+                <br />
+                <small>{glider.faiClass}</small>
+              {/if}
+            </td>
             <td>
               {#if glider.since !== undefined}{glider.since}{:else}-{/if}
             </td>

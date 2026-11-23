@@ -5,6 +5,17 @@
   import NavbarItem from '$lib/components/NavbarItem.svelte';
   import {changeLanguage, i18n, initializeI18n} from '$lib/i18n';
   import {loginState, refreshLoginState} from '$lib/stores';
+  import type {AltitudeUnit, DistanceUnit} from '$lib/units';
+  import {
+    ALTITUDE_UNITS,
+    DISTANCE_UNITS,
+    applyProfileUnits,
+    initializeUnits,
+    setSessionUnits,
+    units,
+  } from '$lib/units';
+
+  import {apiUpdateProfile} from './profile/api';
 
   let menuOpened = false;
 
@@ -16,9 +27,60 @@
     menuOpened = false;
   }
 
+  /**
+   * Change the display units.
+   *
+   * For logged-in users the change is saved to their user record, for guests
+   * it only lasts for the current browser session.
+   */
+  function changeUnits(altitudeUnit: AltitudeUnit, distanceUnit: DistanceUnit): void {
+    if ($loginState?.username) {
+      const previous = {...$units};
+      units.update((u) => ({...u, altitudeUnit, distanceUnit}));
+      apiUpdateProfile({altitudeUnit, distanceUnit})
+        .then((result) => {
+          if (!result.success) {
+            units.set(previous);
+          }
+        })
+        .catch(() => {
+          units.set(previous);
+        });
+    } else {
+      setSessionUnits({altitudeUnit, distanceUnit});
+    }
+  }
+
+  /**
+   * Load the logged-in user's saved unit preference.
+   */
+  async function loadUnitsFromProfile(): Promise<void> {
+    try {
+      const res = await fetch('/api/v1/profile');
+      if (!res.ok) {
+        return;
+      }
+      const profile: unknown = await res.json();
+      if (
+        profile &&
+        typeof profile === 'object' &&
+        'altitudeUnit' in profile &&
+        'distanceUnit' in profile &&
+        typeof profile.altitudeUnit === 'string' &&
+        typeof profile.distanceUnit === 'string'
+      ) {
+        applyProfileUnits(profile.altitudeUnit, profile.distanceUnit);
+      }
+    } catch {
+      // Not fatal, default units stay in effect.
+    }
+  }
+
   onMount(() => {
     initializeI18n();
     refreshLoginState();
+    initializeUnits();
+    loadUnitsFromProfile();
   });
 </script>
 
@@ -89,6 +151,48 @@
       <div class="navbar-item language-switcher">
         <a href="." on:click={() => changeLanguage('de')}><CountryFlag countryCode="de" /></a>
         <a href="." on:click={() => changeLanguage('en')}><CountryFlag countryCode="gb" /></a>
+      </div>
+      <div class="navbar-item units-switcher">
+        <div class="field is-grouped is-align-items-center">
+          <div class="control">
+            <div class="select is-small">
+              <select
+                aria-label={$i18n.t('common.title--altitude-unit', 'Altitude unit')}
+                value={$units.altitudeUnit}
+                on:change={(event) =>
+                  changeUnits(event.currentTarget.value as AltitudeUnit, $units.distanceUnit)}
+              >
+                {#each ALTITUDE_UNITS as unit (unit)}
+                  <option value={unit}
+                    >{unit === 'm'
+                      ? $i18n.t('common.unit-name--m')
+                      : $i18n.t('common.unit-name--ft')}</option
+                  >
+                {/each}
+              </select>
+            </div>
+          </div>
+          <div class="control">
+            <div class="select is-small">
+              <select
+                aria-label={$i18n.t('common.title--distance-unit', 'Distance unit')}
+                value={$units.distanceUnit}
+                on:change={(event) =>
+                  changeUnits($units.altitudeUnit, event.currentTarget.value as DistanceUnit)}
+              >
+                {#each DISTANCE_UNITS as unit (unit)}
+                  <option value={unit}
+                    >{unit === 'km'
+                      ? $i18n.t('common.unit-name--km')
+                      : unit === 'mi'
+                        ? $i18n.t('common.unit-name--mi')
+                        : $i18n.t('common.unit-name--nm')}</option
+                  >
+                {/each}
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="navbar-item">
         <div class="buttons">
@@ -188,6 +292,10 @@
     flex-direction: row;
     gap: 8px;
     padding-right: 0;
+  }
+
+  .units-switcher select {
+    min-width: 6.5em;
   }
 
   /** Bulma CSS variable customization */

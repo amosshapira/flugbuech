@@ -7,6 +7,7 @@
   import {formatDateTime} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
   import {loginState} from '$lib/stores';
+  import {formatDistanceValue, units} from '$lib/units';
 
   import {SubmitError, type SubmitErrorData} from '../../api';
 
@@ -233,7 +234,7 @@
             <tr>
               <td><code>track_distance</code></td>
               <td>Float</td>
-              <td>The GPS track distance (in km) of your flight</td>
+              <td>The GPS track distance (in {$units.distanceUnit}) of your flight</td>
               <td class="example"><code>37.86</code></td>
             </tr>
             <tr>
@@ -361,7 +362,7 @@
           <th>Launch<br />Location</th>
           <th>Landing<br />Time</th>
           <th>Landing<br />Location</th>
-          <th>GPS<br />Distance</th>
+          <th>GPS<br />Distance ({$units.distanceUnit})</th>
           <th>XContest</th>
           <th>Comment</th>
           <th>Video</th>
@@ -520,7 +521,11 @@
                 </a>
               {/if}
             </td>
-            <td>{flight.trackDistance ?? '-'}</td>
+            <td
+              >{flight.trackDistance !== undefined
+                ? formatDistanceValue(flight.trackDistance, $units.distanceUnit)
+                : '-'}</td
+            >
             <td
               class:is-danger={xcontestTracktypeMessages.errors.length > 0 ||
                 xcontestUrlMessages.errors.length > 0}
@@ -549,7 +554,9 @@
               {/if}
               <br />
               <em>Distance:</em>
-              {flight.xcontestDistance ?? '-'}<br />
+              {flight.xcontestDistance !== undefined
+                ? formatDistanceValue(flight.xcontestDistance, $units.distanceUnit)
+                : '-'}<br />
               <em>URL:</em>
               {#if flight.xcontestUrl === undefined}
                 {#if xcontestUrlMessages.errors.length > 0}

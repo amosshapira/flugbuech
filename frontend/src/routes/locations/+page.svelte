@@ -8,6 +8,7 @@
   import MultiMap from '$lib/components/MultiMap.svelte';
   import {i18n} from '$lib/i18n';
   import {addFlash} from '$lib/stores';
+  import {formatAltitudeValue, units} from '$lib/units';
 
   import {goto, invalidateAll} from '$app/navigation';
 
@@ -162,7 +163,12 @@
               <CountryFlag countryCode={location.countryCode} />
               {location.countryCode}
             </td>
-            <td class="no-wrap">{location.elevation} {$i18n.t('common.unit--m-asl')}</td>
+            <td class="no-wrap"
+              >{formatAltitudeValue(location.elevation, $units.altitudeUnit)}
+              {$units.altitudeUnit === 'm'
+                ? $i18n.t('common.unit--m-asl')
+                : $i18n.t('common.unit--ft-asl')}</td
+            >
             <td class="no-wrap">{location.flightCount}</td>
             <td class="no-wrap">
               <a

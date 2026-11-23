@@ -1,3 +1,6 @@
+import type {DistanceUnit} from './units';
+import {kmToUnit} from './units';
+
 /**
  * Format a duration (in seconds) as "hh:mm".
  *
@@ -33,10 +36,10 @@ export function formatDateTime(datetime: Date): string {
 }
 
 /**
- * Format a distance in km.
+ * Format a distance given in kilometres in the given unit.
  *
- * Example: formatDistance(13.37123) === "13.37 km"
+ * Example: formatDistance(13.37123, 'km') === "13.37 km"
  */
-export function formatDistance(km: number): string {
-    return `${km.toFixed(2).replace(/\.?0*$/g, '')} km`;
+export function formatDistance(km: number, unit: DistanceUnit = 'km'): string {
+    return `${parseFloat(kmToUnit(km, unit).toFixed(2))} ${unit}`;
 }

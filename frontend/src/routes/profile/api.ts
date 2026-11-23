@@ -13,6 +13,8 @@ const SCHEMA_API_PROFILE = z.object({
         .transform((datestring) => new Date(datestring))
         .optional(),
     newsOptIn: z.boolean(),
+    altitudeUnit: z.string().optional(),
+    distanceUnit: z.string().optional(),
 });
 
 export type Profile = z.infer<typeof SCHEMA_API_PROFILE>;
@@ -39,6 +41,8 @@ export async function loadApiProfile(fetch: SvelteKitFetch): Promise<Profile> {
 
 export interface ProfileUpdate {
     readonly newsOptIn?: boolean;
+    readonly altitudeUnit?: string;
+    readonly distanceUnit?: string;
 }
 
 /**

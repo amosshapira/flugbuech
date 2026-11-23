@@ -3,6 +3,8 @@
   import MessageModal from '$lib/components/MessageModal.svelte';
   import SubstitutableText from '$lib/components/SubstitutableText.svelte';
   import {i18n} from '$lib/i18n';
+  import type {AltitudeUnit, DistanceUnit} from '$lib/units';
+  import {ALTITUDE_UNITS, DISTANCE_UNITS, clearSessionUnits, units} from '$lib/units';
 
   import {invalidateAll} from '$app/navigation';
 
@@ -33,6 +35,37 @@
         errorModal = {
           type: 'api-error',
           message: `Failed to change news status: ${error?.body?.message !== undefined ? error.body.message : error}`,
+        };
+      });
+  }
+
+  /**
+   * Change the user's default display units.
+   */
+  function updateUnits(altitudeUnit: string, distanceUnit: string): void {
+    apiUpdateProfile({altitudeUnit, distanceUnit})
+      .then((result) => {
+        if (result.success) {
+          // The saved preference wins over any session override now.
+          clearSessionUnits();
+          units.update((u) => ({
+            ...u,
+            altitudeUnit: altitudeUnit as AltitudeUnit,
+            distanceUnit: distanceUnit as DistanceUnit,
+          }));
+          invalidateAll();
+        } else {
+          errorModal = {
+            type: 'api-error',
+            message: `Failed to change units: ${result.errorReason} (${result.errorDescription})`,
+          };
+        }
+      })
+      .catch((error) => {
+        console.error('Profile update error', error);
+        errorModal = {
+          type: 'api-error',
+          message: `Failed to change units: ${error?.body?.message !== undefined ? error.body.message : error}`,
         };
       });
   }
@@ -89,6 +122,66 @@
       </tr>
     </tbody>
   </table>
+</div>
+
+<div class="block">
+  <h3 class="title is-4">{$i18n.t('profile.title--units')}</h3>
+
+  <article class="message is-info">
+    <div class="message-body">
+      {$i18n.t('profile.prose--units')}
+    </div>
+  </article>
+
+  <div class="field is-horizontal">
+    <div class="field-label is-normal">
+      <label class="label" for="altitude-unit">{$i18n.t('profile.title--altitude-unit')}</label>
+    </div>
+    <div class="field-body">
+      <div class="select">
+        <select
+          id="altitude-unit"
+          value={$units.altitudeUnit}
+          on:change={(event) =>
+            updateUnits(event.currentTarget.value as string, $units.distanceUnit)}
+        >
+          {#each ALTITUDE_UNITS as unit (unit)}
+            <option value={unit}
+              >{unit === 'm'
+                ? $i18n.t('common.unit-name--m')
+                : $i18n.t('common.unit-name--ft')}</option
+            >
+          {/each}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="field is-horizontal">
+    <div class="field-label is-normal">
+      <label class="label" for="distance-unit">{$i18n.t('profile.title--distance-unit')}</label>
+    </div>
+    <div class="field-body">
+      <div class="select">
+        <select
+          id="distance-unit"
+          value={$units.distanceUnit}
+          on:change={(event) =>
+            updateUnits($units.altitudeUnit, event.currentTarget.value as string)}
+        >
+          {#each DISTANCE_UNITS as unit (unit)}
+            <option value={unit}
+              >{unit === 'km'
+                ? $i18n.t('common.unit-name--km')
+                : unit === 'mi'
+                  ? $i18n.t('common.unit-name--mi')
+                  : $i18n.t('common.unit-name--nm')}</option
+            >
+          {/each}
+        </select>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="block">

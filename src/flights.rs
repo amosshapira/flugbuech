@@ -7,6 +7,7 @@ use chrono::{
     naive::{NaiveDate, NaiveDateTime, NaiveTime},
     DateTime, Utc,
 };
+use diesel::pg::data_types::PgInterval;
 use rocket::{
     delete, get,
     http::{ContentType, Header, Status},
@@ -95,6 +96,37 @@ struct ApiFlightListItem {
     hikeandfly: bool,
     /// Whether an IGC file is present for this flight
     has_igc: bool,
+    /// Pilot in command (P1)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pilot_in_command: Option<String>,
+    /// Second pilot / instructor / student / passenger (P2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    second_pilot: Option<String>,
+    /// Operational role: PIC, Dual, Instructor or ICUS
+    flight_capacity: String,
+    /// Launch type: Aerotow, Winch, Car or Self-Launch
+    #[serde(skip_serializing_if = "Option::is_none")]
+    launch_type: Option<String>,
+    /// Release altitude in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    release_altitude_m: Option<i32>,
+    /// Height gained during the tow, in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tow_height_m: Option<i32>,
+    /// Tow plane registration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tug_registration: Option<String>,
+    /// Maximum altitude in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_altitude_m: Option<i32>,
+    /// Height gain in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height_gain_m: Option<i32>,
+    /// Whether the flight ended in an outlanding
+    is_outlanding: bool,
+    /// Engine run time in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    engine_run_time_seconds: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -155,9 +187,79 @@ pub struct ApiFlight {
     hikeandfly: bool,
     /// Whether an IGC file is present for this flight
     has_igc: bool,
+    /// Pilot in command (P1)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pilot_in_command: Option<String>,
+    /// Second pilot / instructor / student / passenger (P2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    second_pilot: Option<String>,
+    /// Operational role: PIC, Dual, Instructor or ICUS
+    flight_capacity: String,
+    /// Launch type: Aerotow, Winch, Car or Self-Launch
+    #[serde(skip_serializing_if = "Option::is_none")]
+    launch_type: Option<String>,
+    /// Release altitude in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    release_altitude_m: Option<i32>,
+    /// Height gained during the tow, in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tow_height_m: Option<i32>,
+    /// Tow plane registration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tug_registration: Option<String>,
+    /// Maximum altitude in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_altitude_m: Option<i32>,
+    /// Height gain in metres
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height_gain_m: Option<i32>,
+    /// Whether the flight ended in an outlanding
+    is_outlanding: bool,
+    /// Engine run time in seconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    engine_run_time_seconds: Option<i64>,
 }
 
 // Forms
+
+/// Valid operational roles on a flight.
+const FLIGHT_CAPACITIES: [&str; 4] = ["PIC", "Dual", "Instructor", "ICUS"];
+
+/// Valid launch types.
+const LAUNCH_TYPES: [&str; 4] = ["Aerotow", "Winch", "Car", "Self-Launch"];
+
+/// Convert a duration in seconds into a PostgreSQL interval.
+fn interval_from_seconds(seconds: Option<i64>) -> Result<Option<PgInterval>, String> {
+    match seconds {
+        Some(seconds) if seconds < 0 => Err("Durations must not be negative".into()),
+        Some(seconds) => {
+            let microseconds = seconds
+                .checked_mul(1_000_000)
+                .ok_or_else(|| "Duration is too large".to_string())?;
+            Ok(Some(PgInterval {
+                months: 0,
+                days: 0,
+                microseconds,
+            }))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Convert a PostgreSQL interval into a duration in seconds.
+fn interval_to_seconds(interval: Option<PgInterval>) -> Option<i64> {
+    interval.map(|interval| {
+        let months = i64::from(interval.months) * 30 * 24 * 60 * 60;
+        let days = i64::from(interval.days) * 24 * 60 * 60;
+        let seconds = interval.microseconds / 1_000_000;
+        months + days + seconds
+    })
+}
+
+/// Convert empty or whitespace-only optional strings to `None`.
+fn empty_to_none(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
+}
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -192,6 +294,29 @@ pub struct FlightAddUpdateForm {
     video_url: Option<String>,
     /// IGC file bytes as URL-safe base64 string
     igc_data: Option<String>,
+    /// Pilot in command (P1)
+    pilot_in_command: Option<String>,
+    /// Second pilot / instructor / student / passenger (P2)
+    second_pilot: Option<String>,
+    /// Operational role: PIC, Dual, Instructor or ICUS
+    flight_capacity: Option<String>,
+    /// Launch type: Aerotow, Winch, Car or Self-Launch
+    launch_type: Option<String>,
+    /// Release altitude in metres
+    release_altitude_m: Option<i32>,
+    /// Height gained during the tow, in metres above the launch site
+    tow_height_m: Option<i32>,
+    /// Tow plane registration
+    tug_registration: Option<String>,
+    /// Maximum altitude in metres
+    max_altitude_m: Option<i32>,
+    /// Height gain in metres
+    height_gain_m: Option<i32>,
+    /// Whether the flight ended in an outlanding
+    #[serde(default)]
+    is_outlanding: bool,
+    /// Engine run time in seconds
+    engine_run_time_seconds: Option<i64>,
 }
 
 // API endpoints
@@ -282,6 +407,17 @@ pub async fn list(database: data::Database, user: auth::AuthUser) -> Json<ApiFli
                 video_url: flight.video_url,
                 hikeandfly: flight.hikeandfly,
                 has_igc,
+                pilot_in_command: flight.pilot_in_command,
+                second_pilot: flight.second_pilot,
+                flight_capacity: flight.flight_capacity,
+                launch_type: flight.launch_type,
+                release_altitude_m: flight.release_altitude_m,
+                tow_height_m: flight.tow_height_m,
+                tug_registration: flight.tug_registration,
+                max_altitude_m: flight.max_altitude_m,
+                height_gain_m: flight.height_gain_m,
+                is_outlanding: flight.is_outlanding,
+                engine_run_time_seconds: interval_to_seconds(flight.engine_run_time),
             }
         })
         .collect::<Vec<_>>();
@@ -377,6 +513,17 @@ pub async fn get(id: i32, database: data::Database, user: auth::AuthUser) -> Res
         video_url: flight.video_url,
         hikeandfly: flight.hikeandfly,
         has_igc,
+        pilot_in_command: flight.pilot_in_command,
+        second_pilot: flight.second_pilot,
+        flight_capacity: flight.flight_capacity,
+        launch_type: flight.launch_type,
+        release_altitude_m: flight.release_altitude_m,
+        tow_height_m: flight.tow_height_m,
+        tug_registration: flight.tug_registration,
+        max_altitude_m: flight.max_altitude_m,
+        height_gain_m: flight.height_gain_m,
+        is_outlanding: flight.is_outlanding,
+        engine_run_time_seconds: interval_to_seconds(flight.engine_run_time),
     }))
 }
 
@@ -390,7 +537,13 @@ impl FlightAddUpdateForm {
     /// Validate a `FlightAddForm` submission and convert it to a `NewFlight` model.
     ///
     /// If validation fails, return error message.
-    async fn into_new_flight(self, user: &User, database: &data::Database) -> Result<NewFlight, String> {
+    async fn into_new_flight(mut self, user: &User, database: &data::Database) -> Result<NewFlight, String> {
+        // Normalize optional free-text fields
+        self.pilot_in_command = empty_to_none(self.pilot_in_command);
+        self.second_pilot = empty_to_none(self.second_pilot);
+        self.launch_type = empty_to_none(self.launch_type);
+        self.tug_registration = empty_to_none(self.tug_registration);
+
         // Look up and validate glider
         if let Some(glider_id) = self.glider {
             match database
@@ -466,6 +619,41 @@ impl FlightAddUpdateForm {
             DateTime::from_naive_utc_and_offset(ndt, Utc) // TODO: Timezone?
         });
 
+        // Validate sailplane-specific fields
+        let flight_capacity = self.flight_capacity.unwrap_or_else(|| "PIC".into());
+        if !FLIGHT_CAPACITIES.contains(&flight_capacity.as_str()) {
+            return Err(format!("Invalid flight capacity: {}", flight_capacity));
+        }
+        if let Some(ref launch_type) = self.launch_type {
+            if !LAUNCH_TYPES.contains(&launch_type.as_str()) {
+                return Err(format!("Invalid launch type: {}", launch_type));
+            }
+        }
+        for (name, value) in [
+            ("release altitude", self.release_altitude_m),
+            ("tow height", self.tow_height_m),
+            ("maximum altitude", self.max_altitude_m),
+            ("height gain", self.height_gain_m),
+        ] {
+            if value.is_some_and(|value| value < 0) {
+                return Err(format!("{} must not be negative", name));
+            }
+        }
+        for (name, value) in [
+            ("Pilot in command", self.pilot_in_command.as_deref()),
+            ("Second pilot", self.second_pilot.as_deref()),
+        ] {
+            if value.is_some_and(|value| value.chars().count() > 128) {
+                return Err(format!("{} must not exceed 128 characters", name));
+            }
+        }
+        if let Some(ref registration) = self.tug_registration {
+            if registration.chars().count() > 16 {
+                return Err("Tow plane registration must not exceed 16 characters".into());
+            }
+        }
+        let engine_run_time = interval_from_seconds(self.engine_run_time_seconds)?;
+
         // Create model
         Ok(NewFlight {
             number: self.number,
@@ -482,6 +670,17 @@ impl FlightAddUpdateForm {
             xcontest_url: self.xcontest_url,
             comment: self.comment,
             video_url: self.video_url,
+            pilot_in_command: self.pilot_in_command,
+            second_pilot: self.second_pilot,
+            flight_capacity,
+            launch_type: self.launch_type,
+            release_altitude_m: self.release_altitude_m,
+            tow_height_m: self.tow_height_m,
+            tug_registration: self.tug_registration,
+            max_altitude_m: self.max_altitude_m,
+            height_gain_m: self.height_gain_m,
+            is_outlanding: self.is_outlanding,
+            engine_run_time,
         })
     }
 }
@@ -598,6 +797,17 @@ pub async fn edit(
     flight.xcontest_url = new_flight.xcontest_url;
     flight.comment = new_flight.comment;
     flight.video_url = new_flight.video_url;
+    flight.pilot_in_command = new_flight.pilot_in_command;
+    flight.second_pilot = new_flight.second_pilot;
+    flight.flight_capacity = new_flight.flight_capacity;
+    flight.launch_type = new_flight.launch_type;
+    flight.release_altitude_m = new_flight.release_altitude_m;
+    flight.tow_height_m = new_flight.tow_height_m;
+    flight.tug_registration = new_flight.tug_registration;
+    flight.max_altitude_m = new_flight.max_altitude_m;
+    flight.height_gain_m = new_flight.height_gain_m;
+    flight.is_outlanding = new_flight.is_outlanding;
+    flight.engine_run_time = new_flight.engine_run_time;
 
     // Save changes
     // TODO: Error handling
@@ -755,10 +965,10 @@ pub fn api_routes() -> Vec<Route> {
 
 #[cfg(test)]
 mod tests {
-    use rocket::{self, local::blocking::Client};
+    use rocket::{self, http::ContentType, local::blocking::Client};
 
     use crate::{
-        models::NewFlight,
+        models::{NewFlight, NewGlider},
         test_utils::{make_test_config, DbTestContext},
     };
 
@@ -822,5 +1032,85 @@ mod tests {
         // Delete non-existing flight: Not found
         let resp = delete_flight!(flight2.id, ctx.auth_cookie_user2());
         assert_eq!(resp.status(), Status::NotFound);
+    }
+
+    #[test]
+    fn add_sailplane_flight() {
+        let ctx = DbTestContext::new();
+        let client = make_client();
+
+        let glider = data::create_glider(
+            &mut *ctx.force_get_conn(),
+            NewGlider {
+                user_id: ctx.testuser1.user.id,
+                manufacturer: "Schleicher".into(),
+                model: "ASK 21".into(),
+                registration: Some("VH-SXQ".into()),
+                is_two_seater: true,
+                fai_class: Some("Two-Seater".into()),
+                ..Default::default()
+            },
+        )
+        .expect("Could not create glider");
+
+        let body = format!(
+            r#"{{
+                "number": 7,
+                "glider": {},
+                "launchDate": "2026-11-19",
+                "launchTime": "10:00:00",
+                "landingTime": "11:30:00",
+                "pilotInCommand": "Alex Doe",
+                "secondPilot": "Sam Instructor",
+                "flightCapacity": "Dual",
+                "launchType": "Aerotow",
+                "releaseAltitudeM": 1200,
+                "towHeightM": 300,
+                "tugRegistration": "VH-TUG",
+                "maxAltitudeM": 2400,
+                "heightGainM": 1800,
+                "isOutlanding": true,
+                "engineRunTimeSeconds": 90
+            }}"#,
+            glider.id
+        );
+        let resp = client
+            .post("/flights")
+            .header(ContentType::JSON)
+            .body(body)
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Created);
+
+        let flights = data::get_flights_for_user(&mut *ctx.force_get_conn(), &ctx.testuser1.user);
+        assert_eq!(flights.len(), 1);
+        let flight = &flights[0];
+        assert_eq!(flight.glider_id, Some(glider.id));
+        assert_eq!(flight.pilot_in_command.as_deref(), Some("Alex Doe"));
+        assert_eq!(flight.second_pilot.as_deref(), Some("Sam Instructor"));
+        assert_eq!(flight.flight_capacity, "Dual");
+        assert_eq!(flight.launch_type.as_deref(), Some("Aerotow"));
+        assert_eq!(flight.release_altitude_m, Some(1200));
+        assert_eq!(flight.tow_height_m, Some(300));
+        assert_eq!(flight.tug_registration.as_deref(), Some("VH-TUG"));
+        assert_eq!(flight.max_altitude_m, Some(2400));
+        assert_eq!(flight.height_gain_m, Some(1800));
+        assert!(flight.is_outlanding);
+        assert_eq!(flight.engine_run_time.map(|i| i.microseconds), Some(90_000_000));
+
+        // Invalid launch type must be rejected
+        let body = format!(
+            r#"{{"glider": {}, "launchType": "Teleport", "launchDate": "2026-11-19", "launchTime": "10:00:00", "landingTime": "11:30:00"}}"#,
+            glider.id
+        );
+        let resp = client
+            .post("/flights")
+            .header(ContentType::JSON)
+            .body(body)
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::BadRequest);
     }
 }

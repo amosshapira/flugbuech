@@ -10,6 +10,7 @@
   import {goto} from '$app/navigation';
 
   import type {Glider} from './api';
+  import {FAI_CLASSES} from './api';
 
   // Props
   export let glider: Glider | undefined = undefined;
@@ -22,6 +23,11 @@
   let source: string = glider?.source ?? '';
   let cost: number | null = glider?.cost ?? null;
   let comment: string = glider?.comment ?? '';
+  let registration: string = glider?.registration ?? '';
+  let competitionId: string = glider?.competitionId ?? '';
+  let isTwoSeater: boolean = glider?.isTwoSeater ?? false;
+  let faiClass: string = glider?.faiClass ?? '';
+  let isMotorglider: boolean = glider?.isMotorglider ?? false;
 
   // Validation
   const fields = ['manufacturer', 'model', 'since', 'until', 'source', 'cost', 'comment'] as const;
@@ -96,6 +102,11 @@
         source,
         cost,
         comment,
+        registration: registration === '' ? undefined : registration,
+        competitionId: competitionId === '' ? undefined : competitionId,
+        isTwoSeater,
+        faiClass: faiClass === '' ? undefined : faiClass,
+        isMotorglider,
       });
       switch (response.status) {
         case 201:
@@ -224,6 +235,101 @@
     {#if fieldErrors.model !== undefined}
       <div class="field-error">{$i18n.t('common.error', {message: fieldErrors.model})}</div>
     {/if}
+
+    <h3 class="title is-4">{$i18n.t('glider.title--sailplane-details')}</h3>
+    <p class="content">
+      <small><em>{$i18n.t('glider.prose--sailplane-details-optional')}</em></small>
+    </p>
+
+    <div class="columns">
+      <div class="column">
+        <label class="label" for="registration">{$i18n.t('glider.title--registration')}</label>
+        <div class="field">
+          <div class="control has-icons-left">
+            <input
+              class="input"
+              type="text"
+              id="registration"
+              name="registration"
+              maxlength="16"
+              placeholder="VH-GOB"
+              bind:value={registration}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-id-card"></i>
+            </div>
+            <p class="formhint">
+              {$i18n.t('glider.hint--registration')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <label class="label" for="competitionId">
+          {$i18n.t('glider.title--competition-id')}
+        </label>
+        <div class="field">
+          <div class="control has-icons-left">
+            <input
+              class="input"
+              type="text"
+              id="competitionId"
+              name="competitionId"
+              maxlength="8"
+              placeholder="GOB"
+              bind:value={competitionId}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-tag"></i>
+            </div>
+            <p class="formhint">
+              {$i18n.t('glider.hint--competition-id')}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns">
+      <div class="column">
+        <label class="label" for="faiClass">{$i18n.t('glider.title--fai-class')}</label>
+        <div class="field">
+          <div class="control is-expanded has-icons-left">
+            <div class="select is-fullwidth">
+              <select id="faiClass" name="faiClass" bind:value={faiClass}>
+                <option value="">-</option>
+                {#each FAI_CLASSES as faiClassOption}
+                  <option value={faiClassOption}>{faiClassOption}</option>
+                {/each}
+              </select>
+              <div class="icon is-small is-left">
+                <i class="fa-solid fa-layer-group"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <span class="label">{$i18n.t('glider.title--configuration')}</span>
+        <div class="field">
+          <label class="checkbox">
+            <input type="checkbox" id="isTwoSeater" bind:checked={isTwoSeater} />
+            {$i18n.t('glider.title--two-seater')}
+          </label>
+        </div>
+        <div class="field">
+          <label class="checkbox">
+            <input type="checkbox" id="isMotorglider" bind:checked={isMotorglider} />
+            {$i18n.t('glider.title--motorglider')}
+          </label>
+          <p class="formhint">
+            {$i18n.t('glider.hint--motorglider')}
+          </p>
+        </div>
+      </div>
+    </div>
 
     <div class="columns">
       <div class="column">

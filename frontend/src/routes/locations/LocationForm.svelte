@@ -7,6 +7,7 @@
   import {i18n} from '$lib/i18n';
   import {addFlash} from '$lib/stores';
   import {reactive} from '$lib/svelte';
+  import {formatAltitudeValue, unitToMetres, units} from '$lib/units';
 
   import {goto} from '$app/navigation';
 
@@ -18,9 +19,23 @@
   // Form values
   let name: string = location?.name ?? '';
   let countryCode: string = location?.countryCode ?? '';
-  let elevation: number | null = location?.elevation ?? null;
   let latitude: number | null = location?.coordinates?.lat ?? null;
   let longitude: number | null = location?.coordinates?.lon ?? null;
+
+  // Elevation is entered in the user's preferred altitude unit, but stored
+  // and sent to the API in metres.
+  let elevationDisplay: string = '';
+  let elevationTouched = false;
+  $: if (!elevationTouched) {
+    elevationDisplay =
+      location?.elevation !== undefined && location?.elevation !== null
+        ? formatAltitudeValue(location.elevation, $units.altitudeUnit)
+        : '';
+  }
+  function elevationToMetres(): number | null {
+    const parsed = parseFloat(elevationDisplay);
+    return Number.isNaN(parsed) ? null : Math.round(unitToMetres(parsed, $units.altitudeUnit));
+  }
 
   // Input transformations
   $: if (countryCode.length > 0) {
@@ -60,10 +75,11 @@
   function validateElevation(): void {
     fieldErrors = {
       ...fieldErrors,
-      elevation: elevation === null ? $i18n.t('location.error--elevation-empty') : undefined,
+      elevation:
+        elevationDisplay.trim() === '' ? $i18n.t('location.error--elevation-empty') : undefined,
     };
   }
-  $: reactive(validateElevation, [elevation]);
+  $: reactive(validateElevation, [elevationDisplay]);
   function validateLatitude(): void {
     fieldErrors = {
       ...fieldErrors,
@@ -114,7 +130,7 @@
       const response = await apiPost(url, {
         name,
         countryCode,
-        elevation,
+        elevation: elevationToMetres(),
         ...(latitude !== null && longitude !== null
           ? {coordinates: {lat: latitude, lon: longitude}}
           : {}),
@@ -244,7 +260,10 @@
     {/if}
 
     <label class="label" for="elevation"
-      >{$i18n.t('location.title--elevation')} ({$i18n.t('common.unit--m-asl')}) *</label
+      >{$i18n.t('location.title--elevation')}
+      ({$units.altitudeUnit === 'm'
+        ? $i18n.t('common.unit--m-asl')
+        : $i18n.t('common.unit--ft-asl')}) *</label
     >
     <div class="field">
       <div class="control has-icons-left">
@@ -254,10 +273,11 @@
           type="number"
           id="elevation"
           name="elevation"
-          min="-200"
-          max="8000"
+          min={$units.altitudeUnit === 'm' ? -200 : -656}
+          max={$units.altitudeUnit === 'm' ? 8000 : 26250}
           step="1"
-          bind:value={elevation}
+          bind:value={elevationDisplay}
+          on:input={() => (elevationTouched = true)}
           required
         />
         <div class="icon is-small is-left">

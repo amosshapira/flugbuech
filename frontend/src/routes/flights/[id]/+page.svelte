@@ -5,6 +5,7 @@
   import {flightName} from '$lib/flights';
   import {formatDate, formatDistance, formatDuration, formatTime} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
+  import {formatAltitudeValue, units} from '$lib/units';
 
   import type {Data} from './+page';
 
@@ -68,6 +69,25 @@
         </th>
         <td>{flight.gliderName || '-'}</td>
       </tr>
+      {#if flight.pilotInCommand || flight.secondPilot || flight.flightCapacity !== 'PIC'}
+        <tr>
+          <th>
+            <span class="icon is-small"><i class="fa-solid fa-user-group"></i></span
+            >&nbsp;&nbsp;{$i18n.t('flight.title--crew-role')}
+          </th>
+          <td>
+            {#if flight.pilotInCommand}
+              P1: {flight.pilotInCommand}
+            {/if}
+            {#if flight.secondPilot}
+              {#if flight.pilotInCommand}&middot;{/if}
+              P2: {flight.secondPilot}
+            {/if}
+            {#if flight.pilotInCommand || flight.secondPilot}&middot;{/if}
+            {flight.flightCapacity}
+          </td>
+        </tr>
+      {/if}
       <tr>
         <th>
           <span class="icon is-small"><i class="fa-solid fa-calendar-alt"></i></span
@@ -84,7 +104,10 @@
           {#if launchAt}
             <CountryFlag countryCode={launchAt.countryCode} />
             <a href="/locations/{launchAt.id}/">{launchAt.name}</a>,
-            {launchAt.elevation} mASL{:else}{$i18n.t(
+            {formatAltitudeValue(launchAt.elevation, $units.altitudeUnit)}
+            {$units.altitudeUnit === 'm'
+              ? $i18n.t('common.unit--m-asl')
+              : $i18n.t('common.unit--ft-asl')}{:else}{$i18n.t(
               'flight.prose--unknown-site',
             )}{/if}{#if flight.launchTime}, {formatTime(flight.launchTime)} UTC{/if}
           {#if flight.hikeandfly}
@@ -100,11 +123,50 @@
           {#if landingAt}
             <CountryFlag countryCode={landingAt.countryCode} />
             <a href="/locations/{landingAt.id}/">{landingAt.name}</a>,
-            {landingAt.elevation} mASL{:else}{$i18n.t(
+            {formatAltitudeValue(landingAt.elevation, $units.altitudeUnit)}
+            {$units.altitudeUnit === 'm'
+              ? $i18n.t('common.unit--m-asl')
+              : $i18n.t('common.unit--ft-asl')}{:else}{$i18n.t(
               'flight.prose--unknown-site',
             )}{/if}{#if flight.landingTime}, {formatTime(flight.landingTime)} UTC{/if}
         </td>
       </tr>
+      {#if flight.launchType || flight.releaseAltitudeM !== undefined || flight.towHeightM !== undefined || flight.tugRegistration || flight.isOutlanding}
+        <tr>
+          <th>
+            <span class="icon is-small"><i class="fa-solid fa-angle-double-up"></i></span
+            >&nbsp;&nbsp;{$i18n.t('flight.title--launch-type')}
+          </th>
+          <td>
+            {flight.launchType || '-'}
+            {#if flight.releaseAltitudeM !== undefined}
+              &middot; {$i18n.t('flight.prose--release-at', {
+                altitude: formatAltitudeValue(flight.releaseAltitudeM, $units.altitudeUnit),
+                unit:
+                  $units.altitudeUnit === 'm'
+                    ? $i18n.t('common.unit--m-asl')
+                    : $i18n.t('common.unit--ft-asl'),
+              })}
+            {/if}
+            {#if flight.towHeightM !== undefined}
+              &middot; {$i18n.t('flight.prose--tow-height', {
+                height: formatAltitudeValue(flight.towHeightM, $units.altitudeUnit),
+                unit:
+                  $units.altitudeUnit === 'm'
+                    ? $i18n.t('common.unit--m')
+                    : $i18n.t('common.unit--ft'),
+              })}
+            {/if}
+            {#if flight.tugRegistration}
+              &middot; {$i18n.t('flight.prose--tug', {registration: flight.tugRegistration})}
+            {/if}
+            {#if flight.isOutlanding}
+              &middot;
+              <span class="tag is-warning">{$i18n.t('flight.title--outlanding')}</span>
+            {/if}
+          </td>
+        </tr>
+      {/if}
       <tr>
         <th>
           <span class="icon is-small"><i class="fa-solid fa-clock"></i></span>
@@ -120,8 +182,47 @@
             'flight.title--gps-track-distance',
           )}
         </th>
-        <td> {flight.trackDistance ? formatDistance(flight.trackDistance) : '-'}</td>
+        <td>
+          {flight.trackDistance
+            ? formatDistance(flight.trackDistance, $units.distanceUnit)
+            : '-'}</td
+        >
       </tr>
+      {#if flight.maxAltitudeM !== undefined || flight.heightGainM !== undefined || flight.engineRunTimeSeconds !== undefined}
+        <tr>
+          <th>
+            <span class="icon is-small"><i class="fa-solid fa-mountain-sun"></i></span
+            >&nbsp;&nbsp;{$i18n.t('flight.title--soaring-metrics')}
+          </th>
+          <td>
+            {#if flight.maxAltitudeM !== undefined}
+              {$i18n.t('flight.prose--max-altitude', {
+                altitude: formatAltitudeValue(flight.maxAltitudeM, $units.altitudeUnit),
+                unit:
+                  $units.altitudeUnit === 'm'
+                    ? $i18n.t('common.unit--m-asl')
+                    : $i18n.t('common.unit--ft-asl'),
+              })}
+            {/if}
+            {#if flight.heightGainM !== undefined}
+              {#if flight.maxAltitudeM !== undefined}&middot;{/if}
+              {$i18n.t('flight.prose--height-gain', {
+                gain: formatAltitudeValue(flight.heightGainM, $units.altitudeUnit),
+                unit:
+                  $units.altitudeUnit === 'm'
+                    ? $i18n.t('common.unit--m')
+                    : $i18n.t('common.unit--ft'),
+              })}
+            {/if}
+            {#if flight.engineRunTimeSeconds !== undefined}
+              {#if flight.maxAltitudeM !== undefined || flight.heightGainM !== undefined}&middot;{/if}
+              {$i18n.t('flight.prose--engine-run-time', {
+                duration: formatDuration(flight.engineRunTimeSeconds),
+              })}
+            {/if}
+          </td>
+        </tr>
+      {/if}
       <tr>
         <th>
           <span class="icon is-small"><i class="fa-solid fa-globe-americas"></i></span

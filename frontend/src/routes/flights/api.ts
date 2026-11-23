@@ -33,6 +33,17 @@ const SCHEMA_API_FLIGHT_LIST_ITEM = z.object({
     videoUrl: z.string().optional(),
     hikeandfly: z.boolean(),
     hasIgc: z.boolean(),
+    pilotInCommand: z.string().optional(),
+    secondPilot: z.string().optional(),
+    flightCapacity: z.string().default('PIC'),
+    launchType: z.string().optional(),
+    releaseAltitudeM: z.number().optional(),
+    towHeightM: z.number().optional(),
+    tugRegistration: z.string().optional(),
+    maxAltitudeM: z.number().optional(),
+    heightGainM: z.number().optional(),
+    isOutlanding: z.boolean().default(false),
+    engineRunTimeSeconds: z.number().optional(),
 });
 
 export type FlightListItem = z.infer<typeof SCHEMA_API_FLIGHT_LIST_ITEM>;
@@ -81,9 +92,30 @@ const SCHEMA_API_FLIGHT = z.object({
     videoUrl: z.string().optional(),
     hikeandfly: z.boolean(),
     hasIgc: z.boolean(),
+    pilotInCommand: z.string().optional(),
+    secondPilot: z.string().optional(),
+    flightCapacity: z.string().default('PIC'),
+    launchType: z.string().optional(),
+    releaseAltitudeM: z.number().optional(),
+    towHeightM: z.number().optional(),
+    tugRegistration: z.string().optional(),
+    maxAltitudeM: z.number().optional(),
+    heightGainM: z.number().optional(),
+    isOutlanding: z.boolean().default(false),
+    engineRunTimeSeconds: z.number().optional(),
 });
 
 export type Flight = z.infer<typeof SCHEMA_API_FLIGHT>;
+
+/** Operational roles on a flight. */
+export const FLIGHT_CAPACITIES = ['PIC', 'Dual', 'Instructor', 'ICUS'] as const;
+
+export type FlightCapacity = (typeof FLIGHT_CAPACITIES)[number];
+
+/** Supported launch types. */
+export const LAUNCH_TYPES = ['Aerotow', 'Winch', 'Car', 'Self-Launch'] as const;
+
+export type LaunchType = (typeof LAUNCH_TYPES)[number];
 
 /**
  * Load single flight from API.
@@ -124,6 +156,14 @@ const SCHEMA_API_IGC_METADATA = z.object({
      */
     pilot: z.string().optional(),
     /**
+     * Name of the pilot in command, from the HFPLTPILOTINCHARGE header.
+     */
+    pilotInCommand: z.string().optional(),
+    /**
+     * Name of the second crew member, from the HFCM2CREW2 header.
+     */
+    secondPilot: z.string().optional(),
+    /**
      * Name of the glider, as configured in the flight instrument.
      */
     glidertype: z.string().optional(),
@@ -147,6 +187,18 @@ const SCHEMA_API_IGC_METADATA = z.object({
      * Track length in kilometers.
      */
     trackDistance: z.number(),
+    /**
+     * Maximum barometric altitude in metres.
+     */
+    maxAltitudeM: z.number().optional(),
+    /**
+     * Barometric height gain in metres.
+     */
+    heightGainM: z.number().optional(),
+    /**
+     * Whether the flight landed away from a known location.
+     */
+    isOutlanding: z.boolean().default(false),
 });
 
 export type IgcMetadata = z.infer<typeof SCHEMA_API_IGC_METADATA>;
@@ -185,6 +237,17 @@ export interface NewApiFlight {
     comment?: string;
     videoUrl?: string;
     igcData?: string;
+    pilotInCommand?: string;
+    secondPilot?: string;
+    flightCapacity?: FlightCapacity;
+    launchType?: LaunchType;
+    releaseAltitudeM?: number;
+    towHeightM?: number;
+    tugRegistration?: string;
+    maxAltitudeM?: number;
+    heightGainM?: number;
+    isOutlanding?: boolean;
+    engineRunTimeSeconds?: number;
 }
 
 /**

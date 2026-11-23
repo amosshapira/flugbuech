@@ -21,6 +21,17 @@ table! {
         video_url -> Nullable<Text>,
         created_at -> Timestamptz,
         hikeandfly -> Bool,
+        pilot_in_command -> Nullable<Varchar>,
+        second_pilot -> Nullable<Varchar>,
+        flight_capacity -> Varchar,
+        launch_type -> Nullable<Varchar>,
+        release_altitude_m -> Nullable<Int4>,
+        tow_height_m -> Nullable<Int4>,
+        tug_registration -> Nullable<Varchar>,
+        max_altitude_m -> Nullable<Int4>,
+        height_gain_m -> Nullable<Int4>,
+        is_outlanding -> Bool,
+        engine_run_time -> Nullable<Interval>,
     }
 }
 
@@ -38,6 +49,11 @@ table! {
         source -> Nullable<Text>,
         cost -> Nullable<Int4>,
         comment -> Nullable<Text>,
+        registration -> Nullable<Varchar>,
+        competition_id -> Nullable<Varchar>,
+        is_two_seater -> Bool,
+        fai_class -> Nullable<Varchar>,
+        is_motorglider -> Bool,
     }
 }
 
@@ -90,6 +106,8 @@ table! {
         email -> Text,
         signed_up -> Timestamptz,
         news_opt_in -> Bool,
+        altitude_unit -> Varchar,
+        distance_unit -> Varchar,
     }
 }
 

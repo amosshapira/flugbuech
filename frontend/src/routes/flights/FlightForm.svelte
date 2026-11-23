@@ -6,6 +6,7 @@
   import {i18n} from '$lib/i18n';
   import {addFlash} from '$lib/stores';
   import {reactive} from '$lib/svelte';
+  import {formatDistanceValue, metresToUnit, unitToKm, unitToMetres, units} from '$lib/units';
   import type {XContestTracktype} from '$lib/xcontest';
 
   import {goto} from '$app/navigation';
@@ -21,6 +22,10 @@
     SubmitError,
     type NewApiFlight,
     editApiFlight,
+    FLIGHT_CAPACITIES,
+    LAUNCH_TYPES,
+    type FlightCapacity,
+    type LaunchType,
   } from './api';
 
   // Props
@@ -50,12 +55,87 @@
   let launchDate: string = flight?.launchTime?.toISOString().slice(0, 10) ?? '';
   let launchTime: string = flight?.launchTime?.toISOString().slice(11, 19) ?? '';
   let landingTime: string = flight?.landingTime?.toISOString().slice(11, 19) ?? '';
-  let trackDistance: string = flight?.trackDistance?.toFixed(2) ?? '';
+  let trackDistanceDisplay: string = '';
   let xcontestTracktype: XContestTracktype | undefined = flight?.xcontestTracktype;
-  let xcontestDistance: string = flight?.xcontestDistance?.toFixed(2) ?? '';
+  let xcontestDistanceDisplay: string = '';
   let xcontestUrl: string = flight?.xcontestUrl ?? '';
   let comment: string = flight?.comment ?? '';
   let videoUrl: string = flight?.videoUrl ?? '';
+  let pilotInCommand: string = flight?.pilotInCommand ?? '';
+  let secondPilot: string = flight?.secondPilot ?? '';
+  let flightCapacity: FlightCapacity = (flight?.flightCapacity as FlightCapacity) ?? 'PIC';
+  let launchType: LaunchType | '' = (flight?.launchType as LaunchType | undefined) ?? '';
+  let towHeightDisplay: number | null = null;
+  let tugRegistration: string = flight?.tugRegistration ?? '';
+  let maxAltitudeDisplay: number | null = null;
+  let heightGainDisplay: number | null = null;
+  let isOutlanding: boolean = flight?.isOutlanding ?? false;
+  let engineRunTimeMinutes: number | null =
+    flight?.engineRunTimeSeconds === undefined ? null : flight.engineRunTimeSeconds / 60;
+
+  // Distances and altitudes are entered in the user's preferred display
+  // units, but stored and sent to the API in metric units (km, m).
+  let trackDistanceTouched = false;
+  let xcontestDistanceTouched = false;
+  let towHeightTouched = false;
+  let maxAltitudeTouched = false;
+  let heightGainTouched = false;
+  let releaseAltitudeDisplay: number | null = null;
+  let releaseAltitudeTouched = false;
+  $: if (!releaseAltitudeTouched) {
+    releaseAltitudeDisplay =
+      flight?.releaseAltitudeM === undefined || flight?.releaseAltitudeM === null
+        ? null
+        : Math.round(metresToUnit(flight.releaseAltitudeM, $units.altitudeUnit));
+  }
+
+  $: if (!trackDistanceTouched) {
+    trackDistanceDisplay =
+      flight?.trackDistance !== undefined && flight?.trackDistance !== null
+        ? formatDistanceValue(flight.trackDistance, $units.distanceUnit)
+        : '';
+  }
+  $: if (!xcontestDistanceTouched) {
+    xcontestDistanceDisplay =
+      flight?.xcontestDistance !== undefined && flight?.xcontestDistance !== null
+        ? formatDistanceValue(flight.xcontestDistance, $units.distanceUnit)
+        : '';
+  }
+  $: if (!towHeightTouched) {
+    towHeightDisplay =
+      flight?.towHeightM === undefined || flight?.towHeightM === null
+        ? null
+        : Math.round(metresToUnit(flight.towHeightM, $units.altitudeUnit));
+  }
+  $: if (!maxAltitudeTouched) {
+    maxAltitudeDisplay =
+      flight?.maxAltitudeM === undefined || flight?.maxAltitudeM === null
+        ? null
+        : Math.round(metresToUnit(flight.maxAltitudeM, $units.altitudeUnit));
+  }
+  $: if (!heightGainTouched) {
+    heightGainDisplay =
+      flight?.heightGainM === undefined || flight?.heightGainM === null
+        ? null
+        : Math.round(metresToUnit(flight.heightGainM, $units.altitudeUnit));
+  }
+
+  /**
+   * Parse a distance in the current display unit, in km for the API.
+   */
+  function displayDistanceToKm(display: string): number | undefined {
+    const parsed = parseFloat(display);
+    return display === '' || Number.isNaN(parsed)
+      ? undefined
+      : unitToKm(parsed, $units.distanceUnit);
+  }
+
+  /**
+   * Convert an altitude entered in the current display unit to metres (rounded).
+   */
+  function displayAltitudeToMetres(display: number | null): number | undefined {
+    return display === null ? undefined : Math.round(unitToMetres(display, $units.altitudeUnit));
+  }
 
   // Validation
   const fields = [
@@ -117,29 +197,29 @@
   function validateTrackDistance(): void {
     // TODO: Create proper NumberInput component
     const distanceRe = /^[0-9]+(\.[0-9]+)?$/u;
-    trackDistance = trackDistance.replace(',', '.');
+    trackDistanceDisplay = trackDistanceDisplay.replace(',', '.');
     fieldErrors = {
       ...fieldErrors,
       trackDistance:
-        trackDistance === '' || trackDistance.match(distanceRe)
+        trackDistanceDisplay === '' || trackDistanceDisplay.match(distanceRe)
           ? undefined
           : $i18n.t('flight.error--invalid-distance'),
     };
   }
-  $: reactive(validateTrackDistance, [trackDistance]);
+  $: reactive(validateTrackDistance, [trackDistanceDisplay]);
   function validateXContestDistance(): void {
     // TODO: Create proper NumberInput component
     const distanceRe = /^[0-9]+(\.[0-9]+)?$/u;
-    xcontestDistance = xcontestDistance.replace(',', '.');
+    xcontestDistanceDisplay = xcontestDistanceDisplay.replace(',', '.');
     fieldErrors = {
       ...fieldErrors,
       xcontestDistance:
-        xcontestDistance === '' || xcontestDistance.match(distanceRe)
+        xcontestDistanceDisplay === '' || xcontestDistanceDisplay.match(distanceRe)
           ? undefined
           : $i18n.t('flight.error--invalid-distance'),
     };
   }
-  $: reactive(validateXContestDistance, [xcontestDistance]);
+  $: reactive(validateXContestDistance, [xcontestDistanceDisplay]);
   function validateAll(): void {
     validateNumber();
     validateGlider();
@@ -202,13 +282,25 @@
       launchTime: launchTime === '' ? undefined : launchTime,
       landingTime: landingTime === '' ? undefined : landingTime,
       hikeandfly,
-      trackDistance: trackDistance === '' ? undefined : parseFloat(trackDistance),
+      trackDistance: displayDistanceToKm(trackDistanceDisplay),
       xcontestTracktype,
-      xcontestDistance: xcontestDistance === '' ? undefined : parseFloat(xcontestDistance),
+      xcontestDistance: displayDistanceToKm(xcontestDistanceDisplay),
       xcontestUrl: xcontestUrl === '' ? undefined : xcontestUrl,
       comment,
       videoUrl: videoUrl === '' ? undefined : videoUrl,
       igcData: igcBase64,
+      pilotInCommand: pilotInCommand === '' ? undefined : pilotInCommand,
+      secondPilot: secondPilot === '' ? undefined : secondPilot,
+      flightCapacity,
+      launchType: launchType === '' ? undefined : launchType,
+      releaseAltitudeM: displayAltitudeToMetres(releaseAltitudeDisplay),
+      towHeightM: displayAltitudeToMetres(towHeightDisplay),
+      tugRegistration: tugRegistration === '' ? undefined : tugRegistration,
+      maxAltitudeM: displayAltitudeToMetres(maxAltitudeDisplay),
+      heightGainM: displayAltitudeToMetres(heightGainDisplay),
+      isOutlanding,
+      engineRunTimeSeconds:
+        engineRunTimeMinutes === null ? undefined : Math.round(engineRunTimeMinutes * 60),
     };
     try {
       if (flight === undefined) {
@@ -296,8 +388,37 @@
         }
 
         // Determine track distance
-        if (trackDistance === '') {
-          trackDistance = igcMetadata.trackDistance.toFixed(2);
+        if (trackDistanceDisplay === '') {
+          trackDistanceTouched = true;
+          trackDistanceDisplay = formatDistanceValue(
+            igcMetadata.trackDistance,
+            $units.distanceUnit,
+          );
+        }
+
+        // Determine crew
+        if (pilotInCommand === '') {
+          pilotInCommand = igcMetadata.pilotInCommand ?? igcMetadata.pilot ?? '';
+        }
+        if (secondPilot === '' && igcMetadata.secondPilot !== undefined) {
+          secondPilot = igcMetadata.secondPilot;
+        }
+
+        // Determine soaring metrics
+        if (maxAltitudeDisplay === null && igcMetadata.maxAltitudeM !== undefined) {
+          maxAltitudeTouched = true;
+          maxAltitudeDisplay = Math.round(
+            metresToUnit(igcMetadata.maxAltitudeM, $units.altitudeUnit),
+          );
+        }
+        if (heightGainDisplay === null && igcMetadata.heightGainM !== undefined) {
+          heightGainTouched = true;
+          heightGainDisplay = Math.round(
+            metresToUnit(igcMetadata.heightGainM, $units.altitudeUnit),
+          );
+        }
+        if (igcMetadata.isOutlanding) {
+          isOutlanding = true;
         }
 
         // Because multipart form submissions suck, we convert the file to base64 and later submit
@@ -475,7 +596,7 @@
             {#each gliders as g}
               <option value={g.id}>
                 {g.manufacturer}
-                {g.model}
+                {g.model}{#if g.registration}&nbsp;({g.registration}){/if}
               </option>
             {/each}
           </select>
@@ -488,6 +609,73 @@
     {#if fieldErrors.glider !== undefined}
       <div class="field-error">{$i18n.t('common.error', {message: fieldErrors.glider})}</div>
     {/if}
+
+    <h3 class="title is-4">{$i18n.t('flight.title--crew-role')}</h3>
+
+    <div class="columns">
+      <div class="column">
+        <label class="label" for="pilotInCommand">
+          {$i18n.t('flight.title--pilot-in-command')}
+        </label>
+        <div class="field">
+          <div class="control has-icons-left">
+            <input
+              id="pilotInCommand"
+              type="text"
+              class="input"
+              maxlength="128"
+              bind:value={pilotInCommand}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-user"></i>
+            </div>
+            <p class="formhint">
+              {$i18n.t('flight.hint--pilot-in-command')}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <label class="label" for="secondPilot">{$i18n.t('flight.title--second-pilot')}</label>
+        <div class="field">
+          <div class="control has-icons-left">
+            <input
+              id="secondPilot"
+              type="text"
+              class="input"
+              maxlength="128"
+              bind:value={secondPilot}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-user-group"></i>
+            </div>
+            <p class="formhint">
+              {$i18n.t('flight.hint--second-pilot')}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <label class="label" for="flightCapacity">{$i18n.t('flight.title--flight-capacity')}</label>
+    <div class="field">
+      <div class="control is-expanded has-icons-left">
+        <div class="select is-fullwidth">
+          <select id="flightCapacity" bind:value={flightCapacity}>
+            {#each FLIGHT_CAPACITIES as capacity}
+              <option value={capacity}>{capacity}</option>
+            {/each}
+          </select>
+          <div class="icon is-small is-left">
+            <i class="fa-solid fa-user-tie"></i>
+          </div>
+        </div>
+        <p class="formhint">
+          {$i18n.t('flight.hint--flight-capacity')}
+        </p>
+      </div>
+    </div>
 
     <h3 class="title is-4">{$i18n.t('flight.title--launch-landing')}</h3>
 
@@ -535,6 +723,121 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <div class="columns">
+      <div class="column">
+        <label class="label" for="launchType">{$i18n.t('flight.title--launch-type')}</label>
+        <div class="field">
+          <div class="control is-expanded has-icons-left">
+            <div class="select is-fullwidth">
+              <select id="launchType" bind:value={launchType}>
+                <option value="">-</option>
+                {#each LAUNCH_TYPES as type}
+                  <option value={type}>{type}</option>
+                {/each}
+              </select>
+              <div class="icon is-small is-left">
+                <i class="fa-solid fa-angle-double-up"></i>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <label class="label" for="tugRegistration">
+          {$i18n.t('flight.title--tug-registration')}
+        </label>
+        <div class="field">
+          <div class="control has-icons-left">
+            <input
+              id="tugRegistration"
+              type="text"
+              class="input"
+              maxlength="16"
+              bind:value={tugRegistration}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-plane"></i>
+            </div>
+            <p class="formhint">
+              {$i18n.t('flight.hint--tug-registration')}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns">
+      <div class="column">
+        <label class="label" for="releaseAltitudeM">
+          {$i18n.t('flight.title--release-altitude')}
+        </label>
+        <div class="field has-addons">
+          <div class="control is-expanded has-icons-left">
+            <input
+              id="releaseAltitudeM"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+              bind:value={releaseAltitudeDisplay}
+              on:input={() => (releaseAltitudeTouched = true)}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-arrows-up-down"></i>
+            </div>
+          </div>
+          <p class="control">
+            <a class="button is-static" href="." tabindex="-1"
+              >{$units.altitudeUnit === 'm'
+                ? $i18n.t('common.unit--m')
+                : $i18n.t('common.unit--ft')}</a
+            >
+          </p>
+        </div>
+        <p class="formhint">
+          {$i18n.t('flight.hint--release-altitude')}
+        </p>
+      </div>
+
+      <div class="column">
+        <label class="label" for="towHeightM">{$i18n.t('flight.title--tow-height')}</label>
+        <div class="field has-addons">
+          <div class="control is-expanded has-icons-left">
+            <input
+              id="towHeightM"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+              bind:value={towHeightDisplay}
+              on:input={() => (towHeightTouched = true)}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-arrow-up-from-bracket"></i>
+            </div>
+          </div>
+          <p class="control">
+            <a class="button is-static" href="." tabindex="-1"
+              >{$units.altitudeUnit === 'm'
+                ? $i18n.t('common.unit--m')
+                : $i18n.t('common.unit--ft')}</a
+            >
+          </p>
+        </div>
+        <p class="formhint">
+          {$i18n.t('flight.hint--tow-height')}
+        </p>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="checkbox">
+        <input type="checkbox" id="isOutlanding" bind:checked={isOutlanding} />
+        {$i18n.t('flight.title--outlanding')}
+      </label>
     </div>
 
     <div class="columns">
@@ -625,19 +928,111 @@
           type="text"
           class="input"
           class:error={fieldErrors.trackDistance !== undefined}
-          bind:value={trackDistance}
+          bind:value={trackDistanceDisplay}
+          on:input={() => (trackDistanceTouched = true)}
         />
         <div class="icon is-small is-left">
           <i class="fa-solid fa-ruler"></i>
         </div>
       </div>
       <p class="control">
-        <a class="button is-static" href="." tabindex="-1">km</a>
+        <a class="button is-static" href="." tabindex="-1">{$units.distanceUnit}</a>
       </p>
     </div>
     {#if fieldErrors.trackDistance !== undefined}
       <div class="field-error">{$i18n.t('common.error', {message: fieldErrors.trackDistance})}</div>
     {/if}
+
+    <h3 class="title is-4">{$i18n.t('flight.title--soaring-metrics')}</h3>
+
+    <div class="columns">
+      <div class="column">
+        <label class="label" for="maxAltitudeM">{$i18n.t('flight.title--max-altitude')}</label>
+        <div class="field has-addons">
+          <div class="control is-expanded has-icons-left">
+            <input
+              id="maxAltitudeM"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+              bind:value={maxAltitudeDisplay}
+              on:input={() => (maxAltitudeTouched = true)}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-mountain-sun"></i>
+            </div>
+          </div>
+          <p class="control">
+            <a class="button is-static" href="." tabindex="-1"
+              >{$units.altitudeUnit === 'm'
+                ? $i18n.t('common.unit--m')
+                : $i18n.t('common.unit--ft')}</a
+            >
+          </p>
+        </div>
+        <p class="formhint">
+          {$i18n.t('flight.hint--max-altitude')}
+        </p>
+      </div>
+
+      <div class="column">
+        <label class="label" for="heightGainM">{$i18n.t('flight.title--height-gain')}</label>
+        <div class="field has-addons">
+          <div class="control is-expanded has-icons-left">
+            <input
+              id="heightGainM"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+              bind:value={heightGainDisplay}
+              on:input={() => (heightGainTouched = true)}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-arrow-trend-up"></i>
+            </div>
+          </div>
+          <p class="control">
+            <a class="button is-static" href="." tabindex="-1"
+              >{$units.altitudeUnit === 'm'
+                ? $i18n.t('common.unit--m')
+                : $i18n.t('common.unit--ft')}</a
+            >
+          </p>
+        </div>
+        <p class="formhint">
+          {$i18n.t('flight.hint--height-gain')}
+        </p>
+      </div>
+
+      <div class="column">
+        <label class="label" for="engineRunTimeMinutes">
+          {$i18n.t('flight.title--engine-run-time')}
+        </label>
+        <div class="field has-addons">
+          <div class="control is-expanded has-icons-left">
+            <input
+              id="engineRunTimeMinutes"
+              type="number"
+              min="0"
+              step="0.1"
+              class="input"
+              bind:value={engineRunTimeMinutes}
+            />
+            <div class="icon is-small is-left">
+              <i class="fa-solid fa-gear"></i>
+            </div>
+          </div>
+          <p class="control">
+            <a class="button is-static" href="." tabindex="-1">min</a>
+          </p>
+        </div>
+        <p class="formhint">
+          {$i18n.t('flight.hint--engine-run-time')}
+        </p>
+      </div>
+    </div>
 
     <h3 class="title is-4">{$i18n.t('flight.title--xcontest')}</h3>
 
@@ -680,14 +1075,15 @@
               type="text"
               class="input"
               class:error={fieldErrors.xcontestDistance !== undefined}
-              bind:value={xcontestDistance}
+              bind:value={xcontestDistanceDisplay}
+              on:input={() => (xcontestDistanceTouched = true)}
             />
             <div class="icon is-small is-left">
               <i class="fa-solid fa-ruler"></i>
             </div>
           </div>
           <p class="control">
-            <a class="button is-static" href="." tabindex="-1">km</a>
+            <a class="button is-static" href="." tabindex="-1">{$units.distanceUnit}</a>
           </p>
         </div>
         {#if fieldErrors.xcontestDistance !== undefined}
