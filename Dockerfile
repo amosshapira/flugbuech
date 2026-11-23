@@ -3,6 +3,10 @@
 # Build frontend resources in node container
 FROM node:22-slim AS frontend-build
 
+# Compile-time feature flag: enable the igcviewer "view track" button
+ARG FEATURE_IGCVIEWER=0
+ENV VITE_FEATURE_IGCVIEWER=${FEATURE_IGCVIEWER}
+
 # Build with npm
 COPY frontend /build/flugbuech/
 RUN cd /build/flugbuech && npm install && npm run build
@@ -13,9 +17,14 @@ RUN cd /build/flugbuech && npm install && npm run build
 # Build server resources in rust container
 FROM docker.io/rust:1-buster AS backend-build
 
+# Compile-time feature flag: enable the igcviewer integration (cargo feature
+# "igcviewer")
+ARG FEATURE_IGCVIEWER=0
+
 # Build binary
 COPY . /build/flugbuech/
-RUN cd /build/flugbuech && cargo build --release
+RUN cd /build/flugbuech \
+ && cargo build --release $(if [ "${FEATURE_IGCVIEWER}" = "1" ]; then printf -- "--features igcviewer"; fi)
 
 
 ###### RUNTIME ######

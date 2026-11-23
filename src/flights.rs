@@ -18,14 +18,33 @@ use rocket::{
     serde::json::Json,
     Route,
 };
+#[cfg(feature = "igcviewer")]
+use rocket::{response::Redirect, State};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     auth, data,
-    models::{Glider, Location, NewFlight, User},
+    models::{Flight, Glider, Location, NewFlight, User},
     process_igc::parse_igc_data,
     responders::ApiError,
 };
+
+// Config
+
+/// Configuration for the optional igcviewer integration.
+///
+/// If `public_url` is set, the `igc_view` route redirects the browser to the
+/// configured public URL of the igcviewer instance. The igcviewer instance
+/// then fetches the IGC file from the API using `viewer_token` as a shared
+/// access token (`IGCVIEWER_TOKEN` env var, must match on both sides).
+#[cfg(feature = "igcviewer")]
+#[derive(Debug, Clone, Default)]
+pub struct IgcViewerConfig {
+    /// Public base URL of the igcviewer instance (e.g. `https://tisot-igc.home`).
+    pub public_url: Option<String>,
+    /// Shared access token used by the igcviewer instance to download IGC files.
+    pub viewer_token: Option<String>,
+}
 
 // API types
 
@@ -1096,6 +1115,76 @@ impl<'r> Responder<'r, 'static> for FileAttachment {
     }
 }
 
+/// Compare two byte strings in constant time (avoids timing attacks when
+/// comparing access tokens).
+#[cfg(feature = "igcviewer")]
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Load the IGC file of an already authorized flight, as file attachment.
+async fn igc_file_for_flight(database: data::Database, flight: Flight) -> Result<FileAttachment, Status> {
+    // Get IGC data
+    let flight_id = flight.id;
+    match database
+        .run(move |db| data::get_igc_for_flight(db, &flight))
+        .await
+    {
+        Some(igc) => Ok(FileAttachment::new(
+            igc.data,
+            ContentType::new("application", "octet-stream"),
+            format!("flight{}.igc", flight_id),
+        )),
+        None => Err(Status::NotFound),
+    }
+}
+
+/// Download the IGC file of a flight.
+///
+/// With the `igcviewer` feature enabled, authentication is either the owner's
+/// session cookie or the shared igcviewer access token passed as `t` query
+/// parameter.
+#[cfg(feature = "igcviewer")]
+#[get("/flights/<id>/igc?<t>")]
+pub async fn igc_download(
+    user: Option<auth::AuthUser>,
+    database: data::Database,
+    config: &State<IgcViewerConfig>,
+    t: Option<&str>,
+    id: i32,
+) -> Result<FileAttachment, Status> {
+    // Get flight
+    let flight = match database.run(move |db| data::get_flight_with_id(db, id)).await {
+        Some(flight) => flight,
+        None => return Err(Status::NotFound),
+    };
+
+    // Authorization: either the flight owner or the igcviewer token
+    match user {
+        Some(user) => {
+            // Ownership check
+            if flight.user_id != user.into_inner().id {
+                return Err(Status::Forbidden);
+            }
+        }
+        None => {
+            let token_valid = config.viewer_token.as_deref().is_some_and(|expected| {
+                t.is_some_and(|t| constant_time_eq(t.as_bytes(), expected.as_bytes()))
+            });
+            if !token_valid {
+                return Err(Status::Unauthorized);
+            }
+        }
+    }
+
+    igc_file_for_flight(database, flight).await
+}
+
+/// Download the IGC file of a flight (owner session only).
+#[cfg(not(feature = "igcviewer"))]
 #[get("/flights/<id>/igc")]
 pub async fn igc_download(
     user: auth::AuthUser,
@@ -1115,24 +1204,71 @@ pub async fn igc_download(
         return Err(Status::Forbidden);
     }
 
-    // Get IGC data
-    let flight_id = flight.id;
-    match database
-        .run(move |db| data::get_igc_for_flight(db, &flight))
-        .await
-    {
-        Some(igc) => Ok(FileAttachment::new(
-            igc.data,
-            ContentType::new("application", "octet-stream"),
-            format!("flight{}.igc", flight_id),
-        )),
-        None => Err(Status::NotFound),
+    igc_file_for_flight(database, flight).await
+}
+
+/// Redirect to the igcviewer instance to view the track of a flight.
+///
+/// The browser is redirected to the configured public URL of the igcviewer
+/// instance, which fetches the IGC file from this API using the shared
+/// access token.
+///
+/// If no igcviewer is configured, fall back to redirecting to the regular
+/// IGC download endpoint.
+#[cfg(feature = "igcviewer")]
+#[get("/flights/<id>/igc/view")]
+pub async fn igc_view(
+    user: auth::AuthUser,
+    database: data::Database,
+    config: &State<IgcViewerConfig>,
+    id: i32,
+) -> Result<Redirect, Status> {
+    let user = user.into_inner();
+
+    // Get flight
+    let flight = match database.run(move |db| data::get_flight_with_id(db, id)).await {
+        Some(flight) => flight,
+        None => return Err(Status::NotFound),
+    };
+
+    // Ownership check
+    if flight.user_id != user.id {
+        return Err(Status::Forbidden);
     }
+
+    // Check that the flight has an IGC file (the igcviewer instance fetches
+    // the file itself using the shared access token)
+    let flight_id = flight.id;
+    let has_igc = database
+        .run(move |db| data::get_igc_for_flight(db, &flight).is_some())
+        .await;
+    if !has_igc {
+        return Err(Status::NotFound);
+    }
+
+    // If the viewer is not configured, fall back to the download endpoint
+    let public_url = match &config.public_url {
+        Some(url) => url,
+        None => return Ok(Redirect::to(format!("/api/v1/flights/{flight_id}/igc/"))),
+    };
+
+    // Redirect to the igcviewer instance
+    Ok(Redirect::to(format!(
+        "{}?flight={flight_id}",
+        public_url.trim_end_matches('/'),
+    )))
+}
+
+#[cfg(feature = "igcviewer")]
+#[get("/flights/<id>/igc/view", rank = 2)]
+#[allow(unused_variables)]
+pub fn igc_view_nologin(id: i32) -> ApiError {
+    ApiError::MissingAuthentication
 }
 
 /// Return vec of all API routes.
 pub fn api_routes() -> Vec<Route> {
-    routes![
+    let mut routes = routes![
         list,
         list_nologin,
         get,
@@ -1146,7 +1282,10 @@ pub fn api_routes() -> Vec<Route> {
         delete,
         delete_nologin,
         igc_download,
-    ]
+    ];
+    #[cfg(feature = "igcviewer")]
+    routes.extend(routes![igc_view, igc_view_nologin]);
+    routes
 }
 
 // TODO: API tests for flight submission and editing
@@ -1166,8 +1305,19 @@ mod tests {
 
     /// Create a new test client. Cookie tracking is disabled.
     fn make_client() -> Client {
+        let builder = rocket::custom(make_test_config()).attach(data::Database::fairing());
+        #[cfg(feature = "igcviewer")]
+        let builder = builder.manage(IgcViewerConfig::default());
+        let app = builder.mount("/", api_routes());
+        Client::untracked(app).expect("valid rocket instance")
+    }
+
+    /// Create a new test client with a custom igcviewer configuration.
+    #[cfg(feature = "igcviewer")]
+    fn make_client_with_config(igcviewer: IgcViewerConfig) -> Client {
         let app = rocket::custom(make_test_config())
             .attach(data::Database::fairing())
+            .manage(igcviewer)
             .mount("/", api_routes());
         Client::untracked(app).expect("valid rocket instance")
     }
@@ -1445,5 +1595,116 @@ B1002004800000N01100000EA0150001500";
         // Endpoint requires authentication
         let resp = client.post("/flights/backfill_igc").dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
+    }
+
+    #[test]
+    #[cfg(feature = "igcviewer")]
+    fn view_igc() {
+        let ctx = DbTestContext::new();
+        let client = make_client();
+
+        // Create a flight with an IGC file
+        let flight = data::create_flight(
+            &mut *ctx.force_get_conn(),
+            &NewFlight {
+                number: Some(1),
+                user_id: ctx.testuser1.user.id,
+                ..Default::default()
+            },
+            Some(b"HFGTYGLIDERTYPE: DG-505\nB1000004800000N01100000EA0100001000".to_vec()),
+        );
+
+        // Without authentication: Unauthorized
+        let resp = client.get(format!("/flights/{}/igc/view", flight.id)).dispatch();
+        assert_eq!(resp.status(), Status::Unauthorized);
+
+        // Other user: Forbidden
+        let resp = client
+            .get(format!("/flights/{}/igc/view", flight.id))
+            .private_cookie(ctx.auth_cookie_user2())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Forbidden);
+
+        // Without configured igcviewer: Redirect to the download endpoint
+        let resp = client
+            .get(format!("/flights/{}/igc/view", flight.id))
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::SeeOther);
+        assert_eq!(
+            resp.headers().get("Location").next().unwrap(),
+            format!("/api/v1/flights/{}/igc/", flight.id),
+        );
+
+        // Without IGC data: Not found
+        let flight_no_igc = data::create_flight(
+            &mut *ctx.force_get_conn(),
+            &NewFlight {
+                number: Some(2),
+                user_id: ctx.testuser1.user.id,
+                ..Default::default()
+            },
+            None,
+        );
+        let resp = client
+            .get(format!("/flights/{}/igc/view", flight_no_igc.id))
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::NotFound);
+    }
+
+    #[test]
+    #[cfg(feature = "igcviewer")]
+    fn view_igc_with_viewer() {
+        let ctx = DbTestContext::new();
+
+        let client = make_client_with_config(IgcViewerConfig {
+            public_url: Some("https://tisot-igc.home".into()),
+            viewer_token: Some("sekrit".into()),
+        });
+
+        // Create a flight with an IGC file
+        let flight = data::create_flight(
+            &mut *ctx.force_get_conn(),
+            &NewFlight {
+                number: Some(1),
+                user_id: ctx.testuser1.user.id,
+                ..Default::default()
+            },
+            Some(b"HFGTYGLIDERTYPE: DG-505\nB1000004800000N01100000EA0100001000".to_vec()),
+        );
+
+        // With configured igcviewer: browser is redirected to the viewer
+        let resp = client
+            .get(format!("/flights/{}/igc/view", flight.id))
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::SeeOther);
+        assert_eq!(
+            resp.headers().get("Location").next().unwrap(),
+            format!("https://tisot-igc.home?flight={}", flight.id),
+        );
+
+        // The igcviewer instance can download the IGC file using the token
+        let resp = client
+            .get(format!("/flights/{}/igc?t=sekrit", flight.id))
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        assert_eq!(
+            resp.into_bytes().expect("body"),
+            b"HFGTYGLIDERTYPE: DG-505\nB1000004800000N01100000EA0100001000".to_vec(),
+        );
+
+        // Wrong or missing token: Unauthorized
+        for query in ["", "?t=wrong"] {
+            let resp = client
+                .get(format!("/flights/{}/igc{}", flight.id, query))
+                .dispatch();
+            assert_eq!(resp.status(), Status::Unauthorized);
+        }
     }
 }

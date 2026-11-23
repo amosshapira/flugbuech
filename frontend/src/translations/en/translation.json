@@ -142,6 +142,7 @@
     "action--backfill-igc": "Back-fill from IGC files",
     "action--delete-flight": "Delete Flight",
     "action--download-igc": "Download IGC",
+    "action--view-track": "View track",
     "action--edit-flight": "Edit Flight",
     "action--import-csv": "Import from CSV",
     "action--view-flight": "View Flight",

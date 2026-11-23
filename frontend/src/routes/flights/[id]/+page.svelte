@@ -9,6 +9,10 @@
 
   import type {Data} from './+page';
 
+  // Compile-time feature flag: the "view track" button is only included in
+  // builds with the igcviewer integration enabled (VITE_FEATURE_IGCVIEWER=1).
+  const igcviewerEnabled = import.meta.env.VITE_FEATURE_IGCVIEWER === '1';
+
   export let data: Data;
 
   $: flight = data.flight;
@@ -42,7 +46,12 @@
     </a>
   </div>
   <div class="right">
-    {#if flight.hasIgc}
+    {#if flight.hasIgc && igcviewerEnabled}
+      <a href="/api/v1/flights/{flight.id}/igc/view/" class="button is-light" data-sveltekit-reload>
+        <span class="icon is-small"><i class="fa-solid fa-route"></i></span>&nbsp;&nbsp;{$i18n.t(
+          'flights.action--view-track',
+        )}
+      </a>
       <a href="/api/v1/flights/{flight.id}/igc/" class="button is-light" data-sveltekit-reload>
         <span class="icon is-small"><i class="fa-solid fa-download"></i></span>&nbsp;&nbsp;{$i18n.t(
           'flights.action--download-igc',

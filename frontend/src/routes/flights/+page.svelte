@@ -17,6 +17,10 @@
   import type {FlightListItem} from './api';
   import {apiBackfillIgc, type BackfillIgcResult, SubmitError} from './api';
 
+  // Compile-time feature flag: the "view track" button is only included in
+  // builds with the igcviewer integration enabled (VITE_FEATURE_IGCVIEWER=1).
+  const igcviewerEnabled = import.meta.env.VITE_FEATURE_IGCVIEWER === '1';
+
   export let data: Data;
 
   let flashes: Flashes;
@@ -309,7 +313,16 @@
               >
                 <i class="fa-solid fa-trash-alt"></i>
               </button>
-              {#if flight.hasIgc}
+              {#if flight.hasIgc && igcviewerEnabled}
+                <a
+                  class="icon"
+                  title={$i18n.t('flights.action--view-track')}
+                  aria-label={$i18n.t('flights.action--view-track')}
+                  href="/api/v1/flights/{flight.id}/igc/view/"
+                  data-sveltekit-reload
+                >
+                  <i class="fa-solid fa-route"></i>
+                </a>
                 <a
                   class="icon"
                   title={$i18n.t('flights.action--download-igc')}

@@ -38,6 +38,11 @@ pub const DESCRIPTION: &str = "Paragliding flight book.";
 
 // Config
 
+#[cfg(feature = "igcviewer")]
+fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Config {
     /// Allowed CORS origin.
@@ -94,10 +99,16 @@ async fn main() -> Result<()> {
     let figment = app.figment();
     let config: Config = figment.extract().context("Could not extract config")?;
 
-    // Attach fairings
+    // Attach fairings and managed state
     let app = app
         .attach(data::Database::fairing())
         .attach(cors::Cors::from_config(config.cors_allow_origin.as_deref()));
+    // Optional igcviewer integration
+    #[cfg(feature = "igcviewer")]
+    let app = app.manage(flights::IgcViewerConfig {
+        public_url: env_nonempty("IGCVIEWER_PUBLIC_URL"),
+        viewer_token: env_nonempty("IGCVIEWER_TOKEN"),
+    });
 
     // Register custom error catchers
     let app = app.register("/", catchers![service_not_available]);

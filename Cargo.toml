@@ -5,6 +5,12 @@ authors = ["Danilo Bargen <mail@dbrgn.ch>"]
 edition = "2018"
 license = "AGPL-3.0"
 
+[features]
+default = []
+# Optional igcviewer integration: "view track" redirects and shared token
+# authentication for IGC downloads. See README.md.
+igcviewer = []
+
 [dependencies]
 anyhow = "1"
 base64 = "0.22"

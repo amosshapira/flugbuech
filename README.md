@@ -135,6 +135,28 @@ weekly.
 **IMPORTANT**: Make sure to change the `ROCKET_SECRET_KEY` variable when
 configuring your deployment!
 
+### Optional igcviewer integration
+
+This fork can integrate with the [IGC 3D Flight
+Viewer](https://github.com/amosshapira/igcviewer) (fork of
+[abbbi/igcviewer](https://github.com/abbbi/igcviewer)): a "view track" button
+on flight pages redirects to the viewer, which loads the IGC file of the
+flight directly from the Flugbuech API over the local docker network.
+
+The integration is a compile-time feature and disabled by default. To enable
+it, build the Docker image with `--build-arg FEATURE_IGCVIEWER=1` (this
+enables the `igcviewer` cargo feature and bakes the `VITE_FEATURE_IGCVIEWER=1`
+frontend flag) and configure the following environment variables:
+
+| Variable | Side | Description |
+| --- | --- | --- |
+| `IGCVIEWER_PUBLIC_URL` | Flugbuech API | Public base URL of the igcviewer instance, e.g. `https://tisot-igc.home`. Unset: "view track" redirects to the IGC download endpoint. |
+| `IGCVIEWER_TOKEN` | Flugbuech API + igcviewer | Shared access token: the API accepts it as `?t=` query parameter on the IGC download endpoint, the viewer sends it when fetching flights. |
+
+The viewer service itself is configured with `IGCVIEWER_UPSTREAM` (base URL of
+the Flugbuech web service inside the docker network, e.g. `http://web:80`) and
+the same `IGCVIEWER_TOKEN`.
+
 
 ## License
 
