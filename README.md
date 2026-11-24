@@ -135,7 +135,13 @@ weekly.
 **IMPORTANT**: Make sure to change the `ROCKET_SECRET_KEY` variable when
 configuring your deployment!
 
-### Optional igcviewer integration
+### Credits
+
+- Favicon (glider icon): [Glider icon by FreePNGimg](https://freepngimg.com/png/75689-glider/icon),
+  licensed [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
+  (non-commercial use with attribution).
+
+## Optional igcviewer integration
 
 This fork can integrate with the [IGC 3D Flight
 Viewer](https://github.com/amosshapira/igcviewer) (fork of
