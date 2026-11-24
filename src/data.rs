@@ -203,6 +203,14 @@ pub fn update_open_viewer_in_new_tab(
         .get_result(conn)
 }
 
+/// Update the page the user is navigated to after login, return the updated
+/// user model.
+pub fn update_default_page(conn: &mut PgConnection, user: &User, page: &str) -> QueryResult<User> {
+    diesel::update(user)
+        .set(users::default_page.eq(page))
+        .get_result(conn)
+}
+
 /// Update a user's preferred display units, return the updated user model.
 pub fn update_units(
     conn: &mut PgConnection,

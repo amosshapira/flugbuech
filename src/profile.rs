@@ -11,6 +11,10 @@ use crate::{auth, data, responders::ApiError};
 pub const ALTITUDE_UNITS: [&str; 2] = ["m", "ft"];
 pub const DISTANCE_UNITS: [&str; 3] = ["km", "mi", "nm"];
 
+/// Valid values for the page navigated to after login. Mirrors the main
+/// navigation destinations for logged-in users.
+pub const DEFAULT_PAGES: [&str; 5] = ["/", "/flights/", "/gliders/", "/locations/", "/stats/"];
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiProfile {
@@ -21,6 +25,7 @@ pub struct ApiProfile {
     altitude_unit: String,
     distance_unit: String,
     open_viewer_in_new_tab: bool,
+    default_page: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -34,6 +39,8 @@ pub struct ApiProfileUpdate {
     distance_unit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     open_viewer_in_new_tab: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_page: Option<String>,
 }
 
 #[get("/profile")]
@@ -47,6 +54,7 @@ pub fn get(user: auth::AuthUser) -> Json<ApiProfile> {
         altitude_unit: user.altitude_unit,
         distance_unit: user.distance_unit,
         open_viewer_in_new_tab: user.open_viewer_in_new_tab,
+        default_page: user.default_page,
     })
 }
 
@@ -91,6 +99,7 @@ pub async fn edit(
         }
     }
     let user_for_viewer = user.clone();
+    let user_for_page = user.clone();
     if let Some(news_opt_in) = data.news_opt_in {
         if let Err(e) = database
             .run(move |db| data::update_news_opt_in(db, &user, news_opt_in))
@@ -110,6 +119,22 @@ pub async fn edit(
             error!("Updating user's viewer preference failed: {e}");
             return Err(ApiError::IoError {
                 message: "Could not update viewer preference".into(),
+            });
+        }
+    }
+    if let Some(default_page) = data.default_page.clone() {
+        if !DEFAULT_PAGES.contains(&default_page.as_str()) {
+            return Err(ApiError::InvalidData {
+                message: format!("Invalid page, must be one of {DEFAULT_PAGES:?}"),
+            });
+        }
+        if let Err(e) = database
+            .run(move |db| data::update_default_page(db, &user_for_page, &default_page))
+            .await
+        {
+            error!("Updating user's default page failed: {e}");
+            return Err(ApiError::IoError {
+                message: "Could not update default page".into(),
             });
         }
     }
@@ -178,6 +203,7 @@ mod tests {
                             altitude_unit: None,
                             distance_unit: None,
                             open_viewer_in_new_tab: None,
+                            default_page: None,
                         })
                         .unwrap(),
                     )
@@ -232,6 +258,7 @@ mod tests {
                     altitude_unit: Some("ft".into()),
                     distance_unit: Some("nm".into()),
                     open_viewer_in_new_tab: None,
+                    default_page: None,
                 })
                 .unwrap(),
             )
@@ -251,6 +278,7 @@ mod tests {
                     altitude_unit: Some("m".into()),
                     distance_unit: Some("mi".into()),
                     open_viewer_in_new_tab: None,
+                    default_page: None,
                 })
                 .unwrap(),
             )
@@ -270,6 +298,7 @@ mod tests {
                     altitude_unit: Some("meters".into()),
                     distance_unit: Some("nm".into()),
                     open_viewer_in_new_tab: None,
+                    default_page: None,
                 })
                 .unwrap(),
             )
@@ -289,6 +318,71 @@ mod tests {
         let body = resp4.into_string().expect("body");
         assert!(body.contains(r#""altitudeUnit":"m""#));
         assert!(body.contains(r#""distanceUnit":"mi""#));
+    }
+
+    #[test]
+    fn update_default_page() {
+        let ctx = DbTestContext::new();
+        let client = make_api_client();
+
+        /// Helper function: Assert default page state
+        fn assert_default_page(conn_mutex: &Mutex<PgConnection>, user_id: i32, page: &str) {
+            let mut conn = conn_mutex.lock().unwrap();
+            let user = data::get_user(&mut conn, user_id).expect("User not found");
+            assert_eq!(user.default_page, page);
+        }
+
+        /// Helper macro: Send request
+        macro_rules! update_default_page {
+            ($page:expr) => {
+                client
+                    .post("/profile")
+                    .header(ContentType::JSON)
+                    .body(
+                        json::to_string(&ApiProfileUpdate {
+                            news_opt_in: None,
+                            altitude_unit: None,
+                            distance_unit: None,
+                            open_viewer_in_new_tab: None,
+                            default_page: Some($page.into()),
+                        })
+                        .unwrap(),
+                    )
+                    .private_cookie(ctx.auth_cookie_user1())
+                    .cookie(ctx.username_cookie())
+                    .dispatch()
+            };
+        }
+
+        // Initially, the database default (home page) applies
+        assert_default_page(&ctx.conn, ctx.testuser1.user.id, "/");
+
+        // Switch to the flights list
+        let resp1 = update_default_page!("/flights/");
+        assert_eq!(resp1.status(), Status::NoContent);
+        assert_default_page(&ctx.conn, ctx.testuser1.user.id, "/flights/");
+
+        // Switch to the stats page
+        let resp2 = update_default_page!("/stats/");
+        assert_eq!(resp2.status(), Status::NoContent);
+        assert_default_page(&ctx.conn, ctx.testuser1.user.id, "/stats/");
+
+        // Invalid values are rejected and don't change anything
+        for invalid in ["/etc/passwd", "flights", "https://example.com/"] {
+            let resp3 = update_default_page!(invalid);
+            assert_eq!(resp3.status(), Status::BadRequest);
+            assert_default_page(&ctx.conn, ctx.testuser1.user.id, "/stats/");
+        }
+
+        // The preference is also reported when loading the profile
+        let resp4 = client
+            .get("/profile")
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp4.status(), Status::Ok);
+        let body = resp4.into_string().expect("body");
+        assert!(body.contains(r#""defaultPage":"/stats/""#));
     }
 
     #[test]
@@ -319,6 +413,7 @@ mod tests {
                             altitude_unit: None,
                             distance_unit: None,
                             open_viewer_in_new_tab: Some($open_in_new_tab),
+                            default_page: None,
                         })
                         .unwrap(),
                     )

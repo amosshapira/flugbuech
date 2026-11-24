@@ -150,6 +150,8 @@
     "column--date": "Datum",
     "column--duration": "Dauer",
     "column--glider": "Fluggerät",
+    "column--p2": "P2",
+    "column--p2-title": "Second pilot / flight instructor / passenger",
     "column--landing": "Landeplatz",
     "column--launch": "Startplatz",
     "column--track-distance": "Tracklänge",
@@ -344,6 +346,9 @@
     "title--track-viewer": "Strecken-Viewer",
     "prose--track-viewer": "Diese Einstellung steuert, wie der interaktive 3D-Strecken-Viewer (der Kniff «Strecke anzeigen» bei Flügen mit IGC-Datei) geöffnet wird.",
     "title--viewer-new-tab": "Viewer in neuem Tab öffnen",
+    "title--default-page": "Startseite",
+    "prose--default-page": "Die Seite, die nach dem Anmelden angezeigt wird. Ein Link auf eine bestimmte Seite (z.B. aus einem Lesezeichen) führt dich weiterhin direkt dorthin.",
+    "title--default-page-select": "Seite nach dem Anmelden",
     "title--user-info": "Benutzerinfo",
     "title--username": "Benutzername"
   },

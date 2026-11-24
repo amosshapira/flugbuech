@@ -10,6 +10,8 @@
   import {goto} from '$app/navigation';
   import {page} from '$app/stores';
 
+  import {loadApiProfile} from '../../profile/api';
+
   import {apiLogin} from './api';
 
   // Form values
@@ -50,8 +52,18 @@
       // Refresh login state
       refreshLoginState();
 
-      // Redirect to home or to requested page
-      goto(sanitizeRedirectPath($page.url.searchParams.get('redirect'), '/'));
+      // Redirect to the user's default page, or to a requested page
+      const redirectParam = $page.url.searchParams.get('redirect');
+      if (redirectParam) {
+        goto(sanitizeRedirectPath(redirectParam, '/'));
+      } else {
+        try {
+          const profile = await loadApiProfile(fetch);
+          goto(sanitizeRedirectPath(profile.defaultPage, '/'));
+        } catch {
+          goto('/');
+        }
+      }
     } else {
       // Login failed
       addFlash({

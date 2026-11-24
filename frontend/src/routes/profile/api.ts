@@ -16,6 +16,7 @@ const SCHEMA_API_PROFILE = z.object({
     altitudeUnit: z.string().optional(),
     distanceUnit: z.string().optional(),
     openViewerInNewTab: z.boolean().optional(),
+    defaultPage: z.string().optional(),
 });
 
 export type Profile = z.infer<typeof SCHEMA_API_PROFILE>;
@@ -45,6 +46,7 @@ export interface ProfileUpdate {
     readonly altitudeUnit?: string;
     readonly distanceUnit?: string;
     readonly openViewerInNewTab?: boolean;
+    readonly defaultPage?: string;
 }
 
 /**

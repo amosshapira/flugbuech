@@ -109,6 +109,7 @@ table! {
         altitude_unit -> Varchar,
         distance_unit -> Varchar,
         open_viewer_in_new_tab -> Bool,
+        default_page -> Varchar,
     }
 }
 

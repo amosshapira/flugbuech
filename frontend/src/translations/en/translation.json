@@ -150,6 +150,8 @@
     "column--date": "Date",
     "column--duration": "Duration",
     "column--glider": "Glider",
+    "column--p2": "P2",
+    "column--p2-title": "Second pilot / instructor / passenger",
     "column--landing": "Landing",
     "column--launch": "Launch",
     "column--track-distance": "Track Distance",
@@ -344,6 +346,9 @@
     "title--track-viewer": "Track Viewer",
     "prose--track-viewer": "These settings control how the interactive 3D track viewer (the \"View track\" button on flights with an IGC file) is opened.",
     "title--viewer-new-tab": "Open viewer in new tab",
+    "title--default-page": "Home Page",
+    "prose--default-page": "The page you land on after logging in. A link that points to a specific page (e.g. from a bookmark or notification) always takes you there instead.",
+    "title--default-page-select": "Page after login",
     "title--user-info": "User Info",
     "title--username": "Username"
   },

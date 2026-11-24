@@ -23,6 +23,10 @@
   // builds with the igcviewer integration enabled.
   const igcviewerEnabled = import.meta.env.VITE_FEATURE_IGCVIEWER === '1';
 
+  /// The page options for the "home page after login" setting. Must match the
+  /// backend's DEFAULT_PAGES.
+  const DEFAULT_PAGES = ['/', '/flights/', '/gliders/', '/locations/', '/stats/'];
+
   function updateOpenViewerInNewTab(openInNewTab: boolean): void {
     apiUpdateProfile({openViewerInNewTab: openInNewTab})
       .then((result) => {
@@ -41,6 +45,29 @@
         errorModal = {
           type: 'api-error',
           message: `Failed to change viewer preference: ${
+            error?.body?.message !== undefined ? error.body.message : error
+          }`,
+        };
+      });
+  }
+
+  function updateDefaultPage(page: string): void {
+    apiUpdateProfile({defaultPage: page})
+      .then((result) => {
+        if (result.success) {
+          invalidateAll();
+        } else {
+          errorModal = {
+            type: 'api-error',
+            message: `Failed to change default page: ${result.errorReason} (${result.errorDescription})`,
+          };
+        }
+      })
+      .catch((error) => {
+        console.error('Profile update error', error);
+        errorModal = {
+          type: 'api-error',
+          message: `Failed to change default page: ${
             error?.body?.message !== undefined ? error.body.message : error
           }`,
         };
@@ -242,6 +269,47 @@
     </div>
   </div>
 {/if}
+
+<div class="block">
+  <h3 class="title is-4">{$i18n.t('profile.title--default-page')}</h3>
+
+  <article class="message is-info">
+    <div class="message-body">
+      {$i18n.t('profile.prose--default-page')}
+    </div>
+  </article>
+
+  <div class="field is-horizontal">
+    <div class="field-label is-normal">
+      <label class="label" for="default-page">
+        {$i18n.t('profile.title--default-page-select')}
+      </label>
+    </div>
+    <div class="field-body">
+      <div class="select">
+        <select
+          id="default-page"
+          value={data.profile.defaultPage || '/'}
+          on:change={(event) => updateDefaultPage(event.currentTarget.value as string)}
+        >
+          {#each DEFAULT_PAGES as page (page)}
+            <option value={page}>
+              {page === '/'
+                ? $i18n.t('navigation.home')
+                : page === '/flights/'
+                  ? $i18n.t('navigation.flights')
+                  : page === '/gliders/'
+                    ? $i18n.t('navigation.gliders')
+                    : page === '/locations/'
+                      ? $i18n.t('navigation.locations')
+                      : $i18n.t('navigation.stats')}
+            </option>
+          {/each}
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="block">
   <h3 class="title is-4">{$i18n.t('profile.title--news')}</h3>
