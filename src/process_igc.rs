@@ -140,15 +140,19 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
         let line = String::from_utf8_lossy(line_bytes);
         match Record::parse_line(line.trim()) {
             Ok(Record::H(h @ HRecord { mnemonic: "PLT", .. })) => {
-                if h.friendly_name == Some("PILOTINCHARGE") {
-                    info.pilot_in_command = Some(h.data.trim().into());
+                let value = h.data.trim();
+                if !is_present(value) {
+                    // "NIL" means "not available"
+                } else if h.friendly_name == Some("PILOTINCHARGE") {
+                    info.pilot_in_command = Some(value.into());
                 } else {
-                    info.pilot = Some(h.data.trim().into());
+                    info.pilot = Some(value.into());
                 }
             }
             Ok(Record::H(h @ HRecord { mnemonic: "CM2", .. })) => {
-                if h.friendly_name == Some("CREW2") {
-                    info.second_pilot = Some(h.data.trim().into());
+                let value = h.data.trim();
+                if h.friendly_name == Some("CREW2") && is_present(value) {
+                    info.second_pilot = Some(value.into());
                 }
             }
             Ok(Record::H(h @ HRecord { mnemonic: "GTY", .. })) => {
@@ -265,6 +269,12 @@ fn parse_igc(reader: impl BufRead, user: &models::User, db: &mut diesel::PgConne
 }
 
 /// Parse in-memory IGC data for the specified user, return parsed data.
+/// Whether an IGC header value carries actual data. "NIL" is the IGC
+/// convention for "not available".
+fn is_present(value: &str) -> bool {
+    !value.eq_ignore_ascii_case("NIL")
+}
+
 pub fn parse_igc_data(data: &[u8], user: &models::User, db: &mut diesel::PgConnection) -> FlightInfoResult {
     let buf_reader = BufReader::new(Cursor::new(data));
     parse_igc(buf_reader, user, db)
@@ -394,6 +404,19 @@ B1202004800000N01100000EA0140001400";
             info.is_outlanding,
             "Unknown landing location must be an outlanding"
         );
+    }
+
+    /// "NIL" header values (IGC convention for "not available", e.g. written
+    /// by Naviter Oudie) must not be stored as crew names.
+    #[test]
+    fn parse_nil_crew_headers() {
+        let data = "\
+HFPLTPILOTINCHARGE: Alex Doe
+HFCM2CREW2:NIL
+B1200004800000N01100000EA0100001500";
+        let info = process(data).unwrap();
+        assert_eq!(info.pilot_in_command, Some("Alex Doe".to_string()));
+        assert_eq!(info.second_pilot, None);
     }
 
     /// Parse IGC data with only two lines: pilot name and site.

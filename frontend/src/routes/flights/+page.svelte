@@ -4,7 +4,6 @@
   import DialogModal from '$lib/components/DialogModal.svelte';
   import Flashes from '$lib/components/Flashes.svelte';
   import MessageModal from '$lib/components/MessageModal.svelte';
-  import XContestSummary from '$lib/components/XContestSummary.svelte';
   import {flightName} from '$lib/flights';
   import {formatDate, formatDistance, formatDuration} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
@@ -22,9 +21,12 @@
   // builds with the igcviewer integration enabled (VITE_FEATURE_IGCVIEWER=1).
   const igcviewerEnabled = import.meta.env.VITE_FEATURE_IGCVIEWER === '1';
 
-  // The P2 column is only shown when at least one flight in the list has a
-  // second pilot recorded.
-  $: hasSecondPilot = data.flights.some((flight) => flight.secondPilot);
+  // The Co-Pilot column is only shown when at least one flight in the list
+  // has a second pilot recorded (a literal "NIL" from IGC headers does not
+  // count as one).
+  $: hasSecondPilot = data.flights.some(
+    (flight) => flight.secondPilot && flight.secondPilot.toUpperCase() !== 'NIL',
+  );
 
   export let data: Data;
 
@@ -230,7 +232,6 @@
           <th>{$i18n.t('flights.column--landing')}</th>
           <th>{$i18n.t('flights.column--duration')}</th>
           <th>{$i18n.t('flights.column--track-distance')}</th>
-          <th>{$i18n.t('flights.column--xcontest')}</th>
           <th>{$i18n.t('flights.column--actions')}</th>
         </tr>
       </thead>
@@ -245,7 +246,11 @@
             </td>
             <td class="no-wrap">{flight.gliderName ?? '-'}</td>
             {#if hasSecondPilot}
-              <td class="no-wrap">{flight.secondPilot ?? '-'}</td>
+              <td class="no-wrap">
+                {flight.secondPilot && flight.secondPilot.toUpperCase() !== 'NIL'
+                  ? flight.secondPilot
+                  : ''}
+              </td>
             {/if}
             <td
               title={launchAt !== undefined
@@ -289,14 +294,6 @@
                   flight.trackDistance,
                   $units.distanceUnit,
                 )}{:else}-{/if}
-            </td>
-            <td class="no-wrap">
-              <XContestSummary
-                tracktype={flight.xcontestTracktype}
-                distance={flight.xcontestDistance}
-                url={flight.xcontestUrl}
-                subtleLink={true}
-              />
             </td>
             <td class="no-wrap">
               <a
