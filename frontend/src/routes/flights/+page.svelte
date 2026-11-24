@@ -10,6 +10,7 @@
   import {i18n} from '$lib/i18n';
   import {addFlash} from '$lib/stores';
   import {formatAltitudeValue, units} from '$lib/units';
+  import {viewer} from '$lib/viewer';
 
   import {goto, invalidateAll} from '$app/navigation';
 
@@ -319,6 +320,8 @@
                   title={$i18n.t('flights.action--view-track')}
                   aria-label={$i18n.t('flights.action--view-track')}
                   href="/api/v1/flights/{flight.id}/igc/view/"
+                  target={$viewer.openViewerInNewTab ? '_blank' : undefined}
+                  rel={$viewer.openViewerInNewTab ? 'noopener' : undefined}
                   data-sveltekit-reload
                 >
                   <i class="fa-solid fa-route"></i>

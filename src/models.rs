@@ -29,6 +29,8 @@ pub struct User {
     pub altitude_unit: String,
     /// Preferred unit for displaying distances ("km", "mi" or "nm")
     pub distance_unit: String,
+    /// Whether the IGC track viewer opens in a separate browser tab
+    pub open_viewer_in_new_tab: bool,
 }
 
 #[derive(Identifiable, Queryable, Associations, AsChangeset, Serialize, PartialEq, Debug, Clone)]

@@ -191,6 +191,18 @@ pub fn update_news_opt_in(conn: &mut PgConnection, user: &User, opt_in: bool) ->
         .get_result(conn)
 }
 
+/// Update whether the IGC track viewer opens in a separate browser tab,
+/// return the updated user model.
+pub fn update_open_viewer_in_new_tab(
+    conn: &mut PgConnection,
+    user: &User,
+    open_viewer_in_new_tab: bool,
+) -> QueryResult<User> {
+    diesel::update(user)
+        .set(users::open_viewer_in_new_tab.eq(open_viewer_in_new_tab))
+        .get_result(conn)
+}
+
 /// Update a user's preferred display units, return the updated user model.
 pub fn update_units(
     conn: &mut PgConnection,

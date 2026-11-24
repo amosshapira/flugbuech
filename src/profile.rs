@@ -20,6 +20,7 @@ pub struct ApiProfile {
     news_opt_in: bool,
     altitude_unit: String,
     distance_unit: String,
+    open_viewer_in_new_tab: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -31,6 +32,8 @@ pub struct ApiProfileUpdate {
     altitude_unit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     distance_unit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    open_viewer_in_new_tab: Option<bool>,
 }
 
 #[get("/profile")]
@@ -43,6 +46,7 @@ pub fn get(user: auth::AuthUser) -> Json<ApiProfile> {
         news_opt_in: user.news_opt_in,
         altitude_unit: user.altitude_unit,
         distance_unit: user.distance_unit,
+        open_viewer_in_new_tab: user.open_viewer_in_new_tab,
     })
 }
 
@@ -86,6 +90,7 @@ pub async fn edit(
             });
         }
     }
+    let user_for_viewer = user.clone();
     if let Some(news_opt_in) = data.news_opt_in {
         if let Err(e) = database
             .run(move |db| data::update_news_opt_in(db, &user, news_opt_in))
@@ -94,6 +99,17 @@ pub async fn edit(
             error!("Updating user's news opt-in failed: {e}");
             return Err(ApiError::IoError {
                 message: "Could not update news opt-in".into(),
+            });
+        }
+    }
+    if let Some(open_viewer_in_new_tab) = data.open_viewer_in_new_tab {
+        if let Err(e) = database
+            .run(move |db| data::update_open_viewer_in_new_tab(db, &user_for_viewer, open_viewer_in_new_tab))
+            .await
+        {
+            error!("Updating user's viewer preference failed: {e}");
+            return Err(ApiError::IoError {
+                message: "Could not update viewer preference".into(),
             });
         }
     }
@@ -161,6 +177,7 @@ mod tests {
                             news_opt_in: Some($opt_in),
                             altitude_unit: None,
                             distance_unit: None,
+                            open_viewer_in_new_tab: None,
                         })
                         .unwrap(),
                     )
@@ -214,6 +231,7 @@ mod tests {
                     news_opt_in: None,
                     altitude_unit: Some("ft".into()),
                     distance_unit: Some("nm".into()),
+                    open_viewer_in_new_tab: None,
                 })
                 .unwrap(),
             )
@@ -232,6 +250,7 @@ mod tests {
                     news_opt_in: None,
                     altitude_unit: Some("m".into()),
                     distance_unit: Some("mi".into()),
+                    open_viewer_in_new_tab: None,
                 })
                 .unwrap(),
             )
@@ -250,6 +269,7 @@ mod tests {
                     news_opt_in: None,
                     altitude_unit: Some("meters".into()),
                     distance_unit: Some("nm".into()),
+                    open_viewer_in_new_tab: None,
                 })
                 .unwrap(),
             )
@@ -269,5 +289,71 @@ mod tests {
         let body = resp4.into_string().expect("body");
         assert!(body.contains(r#""altitudeUnit":"m""#));
         assert!(body.contains(r#""distanceUnit":"mi""#));
+    }
+
+    #[test]
+    fn update_open_viewer_in_new_tab() {
+        let ctx = DbTestContext::new();
+        let client = make_api_client();
+
+        /// Helper function: Assert viewer tab preference state
+        fn assert_open_viewer_in_new_tab(
+            conn_mutex: &Mutex<PgConnection>,
+            user_id: i32,
+            open_in_new_tab: bool,
+        ) {
+            let mut conn = conn_mutex.lock().unwrap();
+            let user = data::get_user(&mut conn, user_id).expect("User not found");
+            assert_eq!(user.open_viewer_in_new_tab, open_in_new_tab);
+        }
+
+        /// Helper macro: Send request
+        macro_rules! update_open_viewer_in_new_tab {
+            ($open_in_new_tab:expr) => {
+                client
+                    .post("/profile")
+                    .header(ContentType::JSON)
+                    .body(
+                        json::to_string(&ApiProfileUpdate {
+                            news_opt_in: None,
+                            altitude_unit: None,
+                            distance_unit: None,
+                            open_viewer_in_new_tab: Some($open_in_new_tab),
+                        })
+                        .unwrap(),
+                    )
+                    .private_cookie(ctx.auth_cookie_user1())
+                    .cookie(ctx.username_cookie())
+                    .dispatch()
+            };
+        }
+
+        // Initially, the database default (open in new tab) applies
+        assert_open_viewer_in_new_tab(&ctx.conn, ctx.testuser1.user.id, true);
+
+        // Switch to opening the viewer in the same tab
+        let resp1 = update_open_viewer_in_new_tab!(false);
+        assert_eq!(resp1.status(), Status::NoContent);
+        assert_open_viewer_in_new_tab(&ctx.conn, ctx.testuser1.user.id, false);
+
+        // Switching back to a separate tab works, too
+        let resp2 = update_open_viewer_in_new_tab!(true);
+        assert_eq!(resp2.status(), Status::NoContent);
+        assert_open_viewer_in_new_tab(&ctx.conn, ctx.testuser1.user.id, true);
+
+        // Change is idempotent
+        let resp3 = update_open_viewer_in_new_tab!(true);
+        assert_eq!(resp3.status(), Status::NoContent);
+        assert_open_viewer_in_new_tab(&ctx.conn, ctx.testuser1.user.id, true);
+
+        // The preference is also reported when loading the profile
+        let resp4 = client
+            .get("/profile")
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp4.status(), Status::Ok);
+        let body = resp4.into_string().expect("body");
+        assert!(body.contains(r#""openViewerInNewTab":true"#));
     }
 }

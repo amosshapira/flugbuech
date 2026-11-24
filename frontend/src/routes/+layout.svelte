@@ -14,6 +14,7 @@
     setSessionUnits,
     units,
   } from '$lib/units';
+  import {applyProfileViewer, initializeViewer} from '$lib/viewer';
 
   import {apiUpdateProfile} from './profile/api';
 
@@ -54,7 +55,7 @@
   /**
    * Load the logged-in user's saved unit preference.
    */
-  async function loadUnitsFromProfile(): Promise<void> {
+  async function loadPrefsFromProfile(): Promise<void> {
     try {
       const res = await fetch('/api/v1/profile');
       if (!res.ok) {
@@ -71,6 +72,14 @@
       ) {
         applyProfileUnits(profile.altitudeUnit, profile.distanceUnit);
       }
+      if (
+        profile &&
+        typeof profile === 'object' &&
+        'openViewerInNewTab' in profile &&
+        typeof profile.openViewerInNewTab === 'boolean'
+      ) {
+        applyProfileViewer(profile.openViewerInNewTab);
+      }
     } catch {
       // Not fatal, default units stay in effect.
     }
@@ -80,7 +89,8 @@
     initializeI18n();
     refreshLoginState();
     initializeUnits();
-    loadUnitsFromProfile();
+    initializeViewer();
+    loadPrefsFromProfile();
   });
 </script>
 

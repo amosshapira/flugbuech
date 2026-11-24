@@ -6,6 +6,7 @@
   import {formatDate, formatDistance, formatDuration, formatTime} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
   import {formatAltitudeValue, units} from '$lib/units';
+  import {viewer} from '$lib/viewer';
 
   import type {Data} from './+page';
 
@@ -47,7 +48,13 @@
   </div>
   <div class="right">
     {#if flight.hasIgc && igcviewerEnabled}
-      <a href="/api/v1/flights/{flight.id}/igc/view/" class="button is-light" data-sveltekit-reload>
+      <a
+        href="/api/v1/flights/{flight.id}/igc/view/"
+        target={$viewer.openViewerInNewTab ? '_blank' : undefined}
+        rel={$viewer.openViewerInNewTab ? 'noopener' : undefined}
+        class="button is-light"
+        data-sveltekit-reload
+      >
         <span class="icon is-small"><i class="fa-solid fa-route"></i></span>&nbsp;&nbsp;{$i18n.t(
           'flights.action--view-track',
         )}

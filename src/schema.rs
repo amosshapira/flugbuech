@@ -108,6 +108,7 @@ table! {
         news_opt_in -> Bool,
         altitude_unit -> Varchar,
         distance_unit -> Varchar,
+        open_viewer_in_new_tab -> Bool,
     }
 }
 

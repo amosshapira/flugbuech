@@ -341,6 +341,9 @@
     "title--news": "News",
     "title--registered-since": "Registered since",
     "title--units": "Units",
+    "title--track-viewer": "Track Viewer",
+    "prose--track-viewer": "These settings control how the interactive 3D track viewer (the \"View track\" button on flights with an IGC file) is opened.",
+    "title--viewer-new-tab": "Open viewer in new tab",
     "title--user-info": "User Info",
     "title--username": "Username"
   },

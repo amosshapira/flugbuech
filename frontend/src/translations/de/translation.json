@@ -341,6 +341,9 @@
     "title--news": "Nachrichten",
     "title--registered-since": "Registriert seit",
     "title--units": "Units",
+    "title--track-viewer": "Strecken-Viewer",
+    "prose--track-viewer": "Diese Einstellung steuert, wie der interaktive 3D-Strecken-Viewer (der Kniff «Strecke anzeigen» bei Flügen mit IGC-Datei) geöffnet wird.",
+    "title--viewer-new-tab": "Viewer in neuem Tab öffnen",
     "title--user-info": "Benutzerinfo",
     "title--username": "Benutzername"
   },

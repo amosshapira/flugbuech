@@ -5,6 +5,7 @@
   import {i18n} from '$lib/i18n';
   import type {AltitudeUnit, DistanceUnit} from '$lib/units';
   import {ALTITUDE_UNITS, DISTANCE_UNITS, clearSessionUnits, units} from '$lib/units';
+  import {applyProfileViewer} from '$lib/viewer';
 
   import {invalidateAll} from '$app/navigation';
 
@@ -17,6 +18,34 @@
 
   // Error handling
   let errorModal: {type: 'api-error'; message: string} | undefined;
+
+  // Compile-time feature flag: the track viewer setting is only shown in
+  // builds with the igcviewer integration enabled.
+  const igcviewerEnabled = import.meta.env.VITE_FEATURE_IGCVIEWER === '1';
+
+  function updateOpenViewerInNewTab(openInNewTab: boolean): void {
+    apiUpdateProfile({openViewerInNewTab: openInNewTab})
+      .then((result) => {
+        if (result.success) {
+          applyProfileViewer(openInNewTab);
+          invalidateAll();
+        } else {
+          errorModal = {
+            type: 'api-error',
+            message: `Failed to change viewer preference: ${result.errorReason} (${result.errorDescription})`,
+          };
+        }
+      })
+      .catch((error) => {
+        console.error('Profile update error', error);
+        errorModal = {
+          type: 'api-error',
+          message: `Failed to change viewer preference: ${
+            error?.body?.message !== undefined ? error.body.message : error
+          }`,
+        };
+      });
+  }
 
   function updateNewsOptIn(optIn: boolean): void {
     apiUpdateProfile({newsOptIn: optIn})
@@ -183,6 +212,36 @@
     </div>
   </div>
 </div>
+
+{#if igcviewerEnabled}
+  <div class="block">
+    <h3 class="title is-4">{$i18n.t('profile.title--track-viewer')}</h3>
+
+    <article class="message is-info">
+      <div class="message-body">
+        {$i18n.t('profile.prose--track-viewer')}
+      </div>
+    </article>
+
+    <div class="field is-horizontal">
+      <div class="field-label is-normal">
+        <label class="label" for="viewer-new-tab">
+          {$i18n.t('profile.title--viewer-new-tab')}
+        </label>
+      </div>
+      <div class="field-body">
+        <div class="control">
+          <input
+            id="viewer-new-tab"
+            type="checkbox"
+            checked={data.profile.openViewerInNewTab !== false}
+            on:change={(event) => updateOpenViewerInNewTab(event.currentTarget.checked)}
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <div class="block">
   <h3 class="title is-4">{$i18n.t('profile.title--news')}</h3>
