@@ -34,7 +34,9 @@ niceties (optional P2 column, favicon).
 - **IGC parsing for the new fields**: crew names (P1/P2) and barometric
   altitudes (max altitude, height gain) are extracted from uploaded IGC
   files. Negative barometric altitudes (field elevation below ISA datum)
-  are handled.
+  are handled. `NIL` header values (the IGC convention for "not
+  available", written e.g. by the Naviter Oudie) are treated as missing
+  instead of being stored as crew names.
 - **IGC glider auto-fill**: when uploading an IGC file, the flight form
   pre-selects the glider by registration (`HFGIDGLIDERID`) or model
   (`HFGTYGLIDERTYPE`) — only on an unambiguous match and only while the
@@ -88,9 +90,15 @@ build arg); upstream builds are unaffected.
 
 ### Small niceties (baae87f, 1a6f108)
 
-- **Optional P2 column in the flights list**: between glider and launch;
-  the column only appears when at least one flight in the list has a
-  second pilot recorded (no setting needed).
+- **Optional P2 column in the flights list**: header "Co-Pilot", sits
+  between glider and launch; the column only appears when at least one
+  flight in the list has a second pilot recorded (no setting needed), and
+  cells are empty for flights without one.
+
+## Changed
+
+- **Flights list**: removed the XContest column (tracktype/distance/link).
+  The XContest summary on the flight detail page is unaffected.
 - **Favicon**: the site previously had no favicon (browsers 404'd
   `/favicon.ico`). Adds a glider-silhouette favicon — ⚠️ note for
   integration: the icon is [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)
