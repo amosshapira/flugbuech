@@ -22,6 +22,10 @@
   // builds with the igcviewer integration enabled (VITE_FEATURE_IGCVIEWER=1).
   const igcviewerEnabled = import.meta.env.VITE_FEATURE_IGCVIEWER === '1';
 
+  // The P2 column is only shown when at least one flight in the list has a
+  // second pilot recorded.
+  $: hasSecondPilot = data.flights.some((flight) => flight.secondPilot);
+
   export let data: Data;
 
   let flashes: Flashes;
@@ -219,6 +223,9 @@
           <th>#</th>
           <th>{$i18n.t('flights.column--date')}</th>
           <th>{$i18n.t('flights.column--glider')}</th>
+          {#if hasSecondPilot}
+            <th title={$i18n.t('flights.column--p2-title')}>{$i18n.t('flights.column--p2')}</th>
+          {/if}
           <th>{$i18n.t('flights.column--launch')}</th>
           <th>{$i18n.t('flights.column--landing')}</th>
           <th>{$i18n.t('flights.column--duration')}</th>
@@ -237,6 +244,9 @@
               {#if flight.launchTime !== undefined}{formatDate(flight.launchTime)}{:else}-{/if}
             </td>
             <td class="no-wrap">{flight.gliderName ?? '-'}</td>
+            {#if hasSecondPilot}
+              <td class="no-wrap">{flight.secondPilot ?? '-'}</td>
+            {/if}
             <td
               title={launchAt !== undefined
                 ? `${formatAltitudeValue(launchAt.elevation, $units.altitudeUnit)} ${
