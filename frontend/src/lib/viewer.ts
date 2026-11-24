@@ -2,9 +2,16 @@ import {writable} from 'svelte/store';
 
 export const DEFAULT_OPEN_VIEWER_IN_NEW_TAB = true;
 
+/** Replay marker for the IGC track viewer. */
+export type TrackMarker = 'glider' | 'paraglider';
+
+export const DEFAULT_TRACK_MARKER: TrackMarker = 'glider';
+export const TRACK_MARKERS: readonly TrackMarker[] = ['glider', 'paraglider'];
+
 /** How the IGC track viewer is opened. */
 export interface ViewerPrefs {
     openViewerInNewTab: boolean;
+    trackMarker: TrackMarker;
 }
 
 const STORAGE_KEY = 'flugbuech-viewer';
@@ -12,15 +19,16 @@ const STORAGE_KEY = 'flugbuech-viewer';
 /**
  * Store with the preferences for the IGC track viewer.
  *
- * Mirrors the preference saved on the user record; persisted per browser so
- * it is available on flight pages without loading the profile first.
+ * Mirrors the preferences saved on the user record; persisted per browser so
+ * they are available on flight pages without loading the profile first.
  */
 export const viewer = writable<ViewerPrefs>({
     openViewerInNewTab: DEFAULT_OPEN_VIEWER_IN_NEW_TAB,
+    trackMarker: DEFAULT_TRACK_MARKER,
 });
 
 /**
- * Restore the stored viewer preference, if any. Called once on client-side
+ * Restore the stored viewer preferences, if any. Called once on client-side
  * app initialization.
  */
 export function initializeViewer(): void {
@@ -40,15 +48,28 @@ export function initializeViewer(): void {
     if (typeof parsed.openViewerInNewTab === 'boolean') {
         viewer.update((v) => ({...v, openViewerInNewTab: parsed.openViewerInNewTab as boolean}));
     }
+    if (parsed.trackMarker && (TRACK_MARKERS as readonly string[]).includes(parsed.trackMarker)) {
+        viewer.update((v) => ({...v, trackMarker: parsed.trackMarker as TrackMarker}));
+    }
 }
 
 /**
- * Apply the user's saved viewer preference (from their profile) and persist
- * it for this browser.
+ * Apply the user's saved viewer preferences (from their profile) and persist
+ * them for this browser.
  */
-export function applyProfileViewer(openViewerInNewTab: boolean): void {
-    viewer.update((v) => ({...v, openViewerInNewTab}));
+export function applyProfileViewer(openViewerInNewTab: boolean, trackMarker?: TrackMarker): void {
+    viewer.update((v) => ({
+        ...v,
+        openViewerInNewTab,
+        ...(trackMarker !== undefined ? {trackMarker} : {}),
+    }));
     if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({openViewerInNewTab}));
+        const stored = JSON.parse(
+            localStorage.getItem(STORAGE_KEY) ?? '{}',
+        ) as Partial<ViewerPrefs>;
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({openViewerInNewTab, trackMarker: trackMarker ?? stored.trackMarker}),
+        );
     }
 }

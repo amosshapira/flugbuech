@@ -49,7 +49,7 @@
   <div class="right">
     {#if flight.hasIgc && igcviewerEnabled}
       <a
-        href="/api/v1/flights/{flight.id}/igc/view/"
+        href="/api/v1/flights/{flight.id}/igc/view/?marker={$viewer.trackMarker}"
         target={$viewer.openViewerInNewTab ? '_blank' : undefined}
         rel={$viewer.openViewerInNewTab ? 'noopener' : undefined}
         class="button is-light"

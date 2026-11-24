@@ -211,6 +211,14 @@ pub fn update_default_page(conn: &mut PgConnection, user: &User, page: &str) -> 
         .get_result(conn)
 }
 
+/// Update the replay marker used in the IGC track viewer, return the updated
+/// user model.
+pub fn update_track_marker(conn: &mut PgConnection, user: &User, marker: &str) -> QueryResult<User> {
+    diesel::update(user)
+        .set(users::track_marker.eq(marker))
+        .get_result(conn)
+}
+
 /// Update a user's preferred display units, return the updated user model.
 pub fn update_units(
     conn: &mut PgConnection,

@@ -15,6 +15,9 @@ pub const DISTANCE_UNITS: [&str; 3] = ["km", "mi", "nm"];
 /// navigation destinations for logged-in users.
 pub const DEFAULT_PAGES: [&str; 5] = ["/", "/flights/", "/gliders/", "/locations/", "/stats/"];
 
+/// Valid values for the replay marker in the IGC track viewer.
+pub const TRACK_MARKERS: [&str; 2] = ["glider", "paraglider"];
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiProfile {
@@ -26,6 +29,7 @@ pub struct ApiProfile {
     distance_unit: String,
     open_viewer_in_new_tab: bool,
     default_page: String,
+    track_marker: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -41,6 +45,8 @@ pub struct ApiProfileUpdate {
     open_viewer_in_new_tab: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     default_page: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    track_marker: Option<String>,
 }
 
 #[get("/profile")]
@@ -55,6 +61,7 @@ pub fn get(user: auth::AuthUser) -> Json<ApiProfile> {
         distance_unit: user.distance_unit,
         open_viewer_in_new_tab: user.open_viewer_in_new_tab,
         default_page: user.default_page,
+        track_marker: user.track_marker,
     })
 }
 
@@ -100,6 +107,7 @@ pub async fn edit(
     }
     let user_for_viewer = user.clone();
     let user_for_page = user.clone();
+    let user_for_marker = user.clone();
     if let Some(news_opt_in) = data.news_opt_in {
         if let Err(e) = database
             .run(move |db| data::update_news_opt_in(db, &user, news_opt_in))
@@ -135,6 +143,22 @@ pub async fn edit(
             error!("Updating user's default page failed: {e}");
             return Err(ApiError::IoError {
                 message: "Could not update default page".into(),
+            });
+        }
+    }
+    if let Some(track_marker) = data.track_marker.clone() {
+        if !TRACK_MARKERS.contains(&track_marker.as_str()) {
+            return Err(ApiError::InvalidData {
+                message: format!("Invalid marker, must be one of {TRACK_MARKERS:?}"),
+            });
+        }
+        if let Err(e) = database
+            .run(move |db| data::update_track_marker(db, &user_for_marker, &track_marker))
+            .await
+        {
+            error!("Updating user's track marker failed: {e}");
+            return Err(ApiError::IoError {
+                message: "Could not update track marker".into(),
             });
         }
     }
@@ -204,6 +228,7 @@ mod tests {
                             distance_unit: None,
                             open_viewer_in_new_tab: None,
                             default_page: None,
+                            track_marker: None,
                         })
                         .unwrap(),
                     )
@@ -259,6 +284,7 @@ mod tests {
                     distance_unit: Some("nm".into()),
                     open_viewer_in_new_tab: None,
                     default_page: None,
+                    track_marker: None,
                 })
                 .unwrap(),
             )
@@ -279,6 +305,7 @@ mod tests {
                     distance_unit: Some("mi".into()),
                     open_viewer_in_new_tab: None,
                     default_page: None,
+                    track_marker: None,
                 })
                 .unwrap(),
             )
@@ -299,6 +326,7 @@ mod tests {
                     distance_unit: Some("nm".into()),
                     open_viewer_in_new_tab: None,
                     default_page: None,
+                    track_marker: None,
                 })
                 .unwrap(),
             )
@@ -345,6 +373,7 @@ mod tests {
                             distance_unit: None,
                             open_viewer_in_new_tab: None,
                             default_page: Some($page.into()),
+                            track_marker: None,
                         })
                         .unwrap(),
                     )
@@ -386,6 +415,60 @@ mod tests {
     }
 
     #[test]
+    fn update_track_marker() {
+        let ctx = DbTestContext::new();
+        let client = make_api_client();
+
+        /// Helper function: Assert track marker state
+        fn assert_track_marker(conn_mutex: &Mutex<PgConnection>, user_id: i32, marker: &str) {
+            let mut conn = conn_mutex.lock().unwrap();
+            let user = data::get_user(&mut conn, user_id).expect("User not found");
+            assert_eq!(user.track_marker, marker);
+        }
+
+        /// Helper macro: Send request
+        macro_rules! update_track_marker {
+            ($marker:expr) => {
+                client
+                    .post("/profile")
+                    .header(ContentType::JSON)
+                    .body(
+                        json::to_string(&ApiProfileUpdate {
+                            news_opt_in: None,
+                            altitude_unit: None,
+                            distance_unit: None,
+                            open_viewer_in_new_tab: None,
+                            default_page: None,
+                            track_marker: Some($marker.into()),
+                        })
+                        .unwrap(),
+                    )
+                    .private_cookie(ctx.auth_cookie_user1())
+                    .cookie(ctx.username_cookie())
+                    .dispatch()
+            };
+        }
+
+        // Initially, the database default (glider) applies
+        assert_track_marker(&ctx.conn, ctx.testuser1.user.id, "glider");
+
+        // Switch to the paraglider marker
+        let resp1 = update_track_marker!("paraglider");
+        assert_eq!(resp1.status(), Status::NoContent);
+        assert_track_marker(&ctx.conn, ctx.testuser1.user.id, "paraglider");
+
+        // Switch back to the glider marker
+        let resp2 = update_track_marker!("glider");
+        assert_eq!(resp2.status(), Status::NoContent);
+        assert_track_marker(&ctx.conn, ctx.testuser1.user.id, "glider");
+
+        // Invalid values are rejected and don't change anything
+        let resp3 = update_track_marker!("balloon");
+        assert_eq!(resp3.status(), Status::BadRequest);
+        assert_track_marker(&ctx.conn, ctx.testuser1.user.id, "glider");
+    }
+
+    #[test]
     fn update_open_viewer_in_new_tab() {
         let ctx = DbTestContext::new();
         let client = make_api_client();
@@ -414,6 +497,7 @@ mod tests {
                             distance_unit: None,
                             open_viewer_in_new_tab: Some($open_in_new_tab),
                             default_page: None,
+                            track_marker: None,
                         })
                         .unwrap(),
                     )

@@ -5,7 +5,7 @@
   import {i18n} from '$lib/i18n';
   import type {AltitudeUnit, DistanceUnit} from '$lib/units';
   import {ALTITUDE_UNITS, DISTANCE_UNITS, clearSessionUnits, units} from '$lib/units';
-  import {applyProfileViewer} from '$lib/viewer';
+  import {applyProfileViewer, type TrackMarker} from '$lib/viewer';
 
   import {invalidateAll} from '$app/navigation';
 
@@ -26,6 +26,34 @@
   /// The page options for the "home page after login" setting. Must match the
   /// backend's DEFAULT_PAGES.
   const DEFAULT_PAGES = ['/', '/flights/', '/gliders/', '/locations/', '/stats/'];
+
+  /// The marker options for the track viewer replay. Must match the backend's
+  /// TRACK_MARKERS.
+  const TRACK_MARKERS = ['glider', 'paraglider'];
+
+  function updateTrackMarker(marker: string): void {
+    apiUpdateProfile({trackMarker: marker})
+      .then((result) => {
+        if (result.success) {
+          applyProfileViewer(data.profile.openViewerInNewTab !== false, marker as TrackMarker);
+          invalidateAll();
+        } else {
+          errorModal = {
+            type: 'api-error',
+            message: `Failed to change track marker: ${result.errorReason} (${result.errorDescription})`,
+          };
+        }
+      })
+      .catch((error) => {
+        console.error('Profile update error', error);
+        errorModal = {
+          type: 'api-error',
+          message: `Failed to change track marker: ${
+            error?.body?.message !== undefined ? error.body.message : error
+          }`,
+        };
+      });
+  }
 
   function updateOpenViewerInNewTab(openInNewTab: boolean): void {
     apiUpdateProfile({openViewerInNewTab: openInNewTab})
@@ -264,6 +292,31 @@
             checked={data.profile.openViewerInNewTab !== false}
             on:change={(event) => updateOpenViewerInNewTab(event.currentTarget.checked)}
           />
+        </div>
+      </div>
+    </div>
+
+    <div class="field is-horizontal">
+      <div class="field-label is-normal">
+        <label class="label" for="track-marker">
+          {$i18n.t('profile.title--track-marker')}
+        </label>
+      </div>
+      <div class="field-body">
+        <div class="select">
+          <select
+            id="track-marker"
+            value={data.profile.trackMarker || 'glider'}
+            on:change={(event) => updateTrackMarker(event.currentTarget.value as string)}
+          >
+            {#each TRACK_MARKERS as marker (marker)}
+              <option value={marker}>
+                {marker === 'glider'
+                  ? $i18n.t('profile.track-marker--glider')
+                  : $i18n.t('profile.track-marker--paraglider')}
+              </option>
+            {/each}
+          </select>
         </div>
       </div>
     </div>

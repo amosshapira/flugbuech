@@ -329,7 +329,7 @@
                   class="icon"
                   title={$i18n.t('flights.action--view-track')}
                   aria-label={$i18n.t('flights.action--view-track')}
-                  href="/api/v1/flights/{flight.id}/igc/view/"
+                  href="/api/v1/flights/{flight.id}/igc/view/?marker={$viewer.trackMarker}"
                   target={$viewer.openViewerInNewTab ? '_blank' : undefined}
                   rel={$viewer.openViewerInNewTab ? 'noopener' : undefined}
                   data-sveltekit-reload

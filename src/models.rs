@@ -33,6 +33,8 @@ pub struct User {
     pub open_viewer_in_new_tab: bool,
     /// Page to navigate to after login (one of profile::DEFAULT_PAGES)
     pub default_page: String,
+    /// Replay marker in the IGC track viewer ("glider" or "paraglider")
+    pub track_marker: String,
 }
 
 #[derive(Identifiable, Queryable, Associations, AsChangeset, Serialize, PartialEq, Debug, Clone)]

@@ -110,6 +110,7 @@ table! {
         distance_unit -> Varchar,
         open_viewer_in_new_tab -> Bool,
         default_page -> Varchar,
+        track_marker -> Varchar,
     }
 }
 
