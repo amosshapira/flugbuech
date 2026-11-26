@@ -346,6 +346,7 @@
     "title--track-viewer": "Track Viewer",
     "prose--track-viewer": "These settings control how the interactive 3D track viewer (the \"View track\" button on flights with an IGC file) is opened.",
     "title--viewer-new-tab": "Open viewer in new tab",
+    "title--reuse-viewer-tab": "Reuse viewer tab",
     "title--track-marker": "Replay marker",
     "track-marker--glider": "Glider",
     "track-marker--paraglider": "Paraglider",

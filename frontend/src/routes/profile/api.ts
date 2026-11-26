@@ -16,6 +16,7 @@ const SCHEMA_API_PROFILE = z.object({
     altitudeUnit: z.string().optional(),
     distanceUnit: z.string().optional(),
     openViewerInNewTab: z.boolean().optional(),
+    reuseViewerTab: z.boolean().optional(),
     defaultPage: z.string().optional(),
     trackMarker: z.string().optional(),
 });
@@ -47,6 +48,7 @@ export interface ProfileUpdate {
     readonly altitudeUnit?: string;
     readonly distanceUnit?: string;
     readonly openViewerInNewTab?: boolean;
+    readonly reuseViewerTab?: boolean;
     readonly defaultPage?: string;
     readonly trackMarker?: string;
 }

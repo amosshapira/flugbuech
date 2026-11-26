@@ -78,13 +78,18 @@
         'openViewerInNewTab' in profile &&
         typeof profile.openViewerInNewTab === 'boolean'
       ) {
-        applyProfileViewer(
-          profile.openViewerInNewTab,
-          'trackMarker' in profile &&
+        applyProfileViewer({
+          openViewerInNewTab: profile.openViewerInNewTab,
+          trackMarker:
+            'trackMarker' in profile &&
             (profile.trackMarker === 'glider' || profile.trackMarker === 'paraglider')
-            ? profile.trackMarker
-            : undefined,
-        );
+              ? profile.trackMarker
+              : undefined,
+          reuseViewerTab:
+            'reuseViewerTab' in profile && typeof profile.reuseViewerTab === 'boolean'
+              ? profile.reuseViewerTab
+              : undefined,
+        });
       }
     } catch {
       // Not fatal, default units stay in effect.

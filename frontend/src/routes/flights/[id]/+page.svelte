@@ -6,7 +6,7 @@
   import {formatDate, formatDistance, formatDuration, formatTime} from '$lib/formatters';
   import {i18n} from '$lib/i18n';
   import {formatAltitudeValue, units} from '$lib/units';
-  import {viewer} from '$lib/viewer';
+  import {handleViewerLinkClick, viewer} from '$lib/viewer';
 
   import type {Data} from './+page';
 
@@ -19,6 +19,7 @@
   $: flight = data.flight;
   $: launchAt = data.flight.launchAt;
   $: landingAt = data.flight.landingAt;
+  $: trackUrl = `/api/v1/flights/${flight.id}/igc/view/?marker=${$viewer.trackMarker}`;
 </script>
 
 <nav class="breadcrumb" aria-label="breadcrumbs">
@@ -49,9 +50,10 @@
   <div class="right">
     {#if flight.hasIgc && igcviewerEnabled}
       <a
-        href="/api/v1/flights/{flight.id}/igc/view/?marker={$viewer.trackMarker}"
+        href={trackUrl}
         target={$viewer.openViewerInNewTab ? '_blank' : undefined}
         rel={$viewer.openViewerInNewTab ? 'noopener' : undefined}
+        on:click={(event) => handleViewerLinkClick(event, trackUrl, $viewer)}
         class="button is-light"
         data-sveltekit-reload
       >

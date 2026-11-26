@@ -2,6 +2,11 @@ import {writable} from 'svelte/store';
 
 export const DEFAULT_OPEN_VIEWER_IN_NEW_TAB = true;
 
+export const DEFAULT_REUSE_VIEWER_TAB = true;
+
+/** Window name used for the viewer tab, so an already-open tab can be reused. */
+export const VIEWER_WINDOW_NAME = 'igcviewer';
+
 /** Replay marker for the IGC track viewer. */
 export type TrackMarker = 'glider' | 'paraglider';
 
@@ -11,6 +16,7 @@ export const TRACK_MARKERS: readonly TrackMarker[] = ['glider', 'paraglider'];
 /** How the IGC track viewer is opened. */
 export interface ViewerPrefs {
     openViewerInNewTab: boolean;
+    reuseViewerTab: boolean;
     trackMarker: TrackMarker;
 }
 
@@ -24,6 +30,7 @@ const STORAGE_KEY = 'flugbuech-viewer';
  */
 export const viewer = writable<ViewerPrefs>({
     openViewerInNewTab: DEFAULT_OPEN_VIEWER_IN_NEW_TAB,
+    reuseViewerTab: DEFAULT_REUSE_VIEWER_TAB,
     trackMarker: DEFAULT_TRACK_MARKER,
 });
 
@@ -48,28 +55,47 @@ export function initializeViewer(): void {
     if (typeof parsed.openViewerInNewTab === 'boolean') {
         viewer.update((v) => ({...v, openViewerInNewTab: parsed.openViewerInNewTab as boolean}));
     }
+    if (typeof parsed.reuseViewerTab === 'boolean') {
+        viewer.update((v) => ({...v, reuseViewerTab: parsed.reuseViewerTab as boolean}));
+    }
     if (parsed.trackMarker && (TRACK_MARKERS as readonly string[]).includes(parsed.trackMarker)) {
         viewer.update((v) => ({...v, trackMarker: parsed.trackMarker as TrackMarker}));
     }
 }
 
+/** A partial viewer preferences object; `undefined` values are ignored. */
+export type ViewerPrefsUpdate = Partial<ViewerPrefs>;
+
 /**
  * Apply the user's saved viewer preferences (from their profile) and persist
  * them for this browser.
+ *
+ * Only the provided fields are changed; fields set to `undefined` keep their
+ * current value.
  */
-export function applyProfileViewer(openViewerInNewTab: boolean, trackMarker?: TrackMarker): void {
-    viewer.update((v) => ({
-        ...v,
-        openViewerInNewTab,
-        ...(trackMarker !== undefined ? {trackMarker} : {}),
-    }));
+export function applyProfileViewer(update: ViewerPrefsUpdate): void {
+    const defined = Object.fromEntries(
+        Object.entries(update).filter(([, value]) => value !== undefined),
+    ) as Partial<ViewerPrefs>;
+    viewer.update((v) => ({...v, ...defined}));
     if (typeof localStorage !== 'undefined') {
         const stored = JSON.parse(
             localStorage.getItem(STORAGE_KEY) ?? '{}',
         ) as Partial<ViewerPrefs>;
-        localStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({openViewerInNewTab, trackMarker: trackMarker ?? stored.trackMarker}),
-        );
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({...stored, ...defined}));
+    }
+}
+
+/**
+ * Click handler for "View track" links: when the viewer opens in a separate
+ * tab and tab reuse is enabled, open it with a fixed window name so the
+ * browser navigates the already-open viewer tab to the new flight instead of
+ * opening another tab each time. Otherwise the default link behaviour applies
+ * (same tab, or a separate tab via target="_blank").
+ */
+export function handleViewerLinkClick(event: MouseEvent, url: string, prefs: ViewerPrefs): void {
+    if (prefs.openViewerInNewTab && prefs.reuseViewerTab) {
+        event.preventDefault();
+        window.open(url, VIEWER_WINDOW_NAME);
     }
 }

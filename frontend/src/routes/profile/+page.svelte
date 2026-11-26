@@ -35,7 +35,7 @@
     apiUpdateProfile({trackMarker: marker})
       .then((result) => {
         if (result.success) {
-          applyProfileViewer(data.profile.openViewerInNewTab !== false, marker as TrackMarker);
+          applyProfileViewer({trackMarker: marker as TrackMarker});
           invalidateAll();
         } else {
           errorModal = {
@@ -59,7 +59,7 @@
     apiUpdateProfile({openViewerInNewTab: openInNewTab})
       .then((result) => {
         if (result.success) {
-          applyProfileViewer(openInNewTab);
+          applyProfileViewer({openViewerInNewTab: openInNewTab});
           invalidateAll();
         } else {
           errorModal = {
@@ -73,6 +73,30 @@
         errorModal = {
           type: 'api-error',
           message: `Failed to change viewer preference: ${
+            error?.body?.message !== undefined ? error.body.message : error
+          }`,
+        };
+      });
+  }
+
+  function updateReuseViewerTab(reuseTab: boolean): void {
+    apiUpdateProfile({reuseViewerTab: reuseTab})
+      .then((result) => {
+        if (result.success) {
+          applyProfileViewer({reuseViewerTab: reuseTab});
+          invalidateAll();
+        } else {
+          errorModal = {
+            type: 'api-error',
+            message: `Failed to change viewer tab reuse preference: ${result.errorReason} (${result.errorDescription})`,
+          };
+        }
+      })
+      .catch((error) => {
+        console.error('Profile update error', error);
+        errorModal = {
+          type: 'api-error',
+          message: `Failed to change viewer tab reuse preference: ${
             error?.body?.message !== undefined ? error.body.message : error
           }`,
         };
@@ -291,6 +315,24 @@
             type="checkbox"
             checked={data.profile.openViewerInNewTab !== false}
             on:change={(event) => updateOpenViewerInNewTab(event.currentTarget.checked)}
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="field is-horizontal">
+      <div class="field-label is-normal">
+        <label class="label" for="viewer-reuse-tab">
+          {$i18n.t('profile.title--reuse-viewer-tab')}
+        </label>
+      </div>
+      <div class="field-body">
+        <div class="control">
+          <input
+            id="viewer-reuse-tab"
+            type="checkbox"
+            checked={data.profile.reuseViewerTab !== false}
+            on:change={(event) => updateReuseViewerTab(event.currentTarget.checked)}
           />
         </div>
       </div>

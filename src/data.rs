@@ -203,6 +203,18 @@ pub fn update_open_viewer_in_new_tab(
         .get_result(conn)
 }
 
+/// Update whether an already-open IGC track viewer tab is reused for new
+/// tracks, return the updated user model.
+pub fn update_reuse_viewer_tab(
+    conn: &mut PgConnection,
+    user: &User,
+    reuse_viewer_tab: bool,
+) -> QueryResult<User> {
+    diesel::update(user)
+        .set(users::reuse_viewer_tab.eq(reuse_viewer_tab))
+        .get_result(conn)
+}
+
 /// Update the page the user is navigated to after login, return the updated
 /// user model.
 pub fn update_default_page(conn: &mut PgConnection, user: &User, page: &str) -> QueryResult<User> {

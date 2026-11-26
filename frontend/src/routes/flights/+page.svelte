@@ -9,7 +9,7 @@
   import {i18n} from '$lib/i18n';
   import {addFlash} from '$lib/stores';
   import {formatAltitudeValue, units} from '$lib/units';
-  import {viewer} from '$lib/viewer';
+  import {handleViewerLinkClick, viewer} from '$lib/viewer';
 
   import {goto, invalidateAll} from '$app/navigation';
 
@@ -239,6 +239,7 @@
         {#each data.flights as flight (flight.id)}
           {@const launchAt = flight.launchAt ? data.locations[flight.launchAt] : undefined}
           {@const landingAt = flight.landingAt ? data.locations[flight.landingAt] : undefined}
+          {@const trackUrl = `/api/v1/flights/${flight.id}/igc/view/?marker=${$viewer.trackMarker}`}
           <tr>
             <td class="no-wrap">{flight.number ?? '-'}</td>
             <td class="no-wrap">
@@ -326,9 +327,10 @@
                   class="icon"
                   title={$i18n.t('flights.action--view-track')}
                   aria-label={$i18n.t('flights.action--view-track')}
-                  href="/api/v1/flights/{flight.id}/igc/view/?marker={$viewer.trackMarker}"
+                  href={trackUrl}
                   target={$viewer.openViewerInNewTab ? '_blank' : undefined}
                   rel={$viewer.openViewerInNewTab ? 'noopener' : undefined}
+                  on:click={(event) => handleViewerLinkClick(event, trackUrl, $viewer)}
                   data-sveltekit-reload
                 >
                   <i class="fa-solid fa-route"></i>

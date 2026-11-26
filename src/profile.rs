@@ -28,6 +28,7 @@ pub struct ApiProfile {
     altitude_unit: String,
     distance_unit: String,
     open_viewer_in_new_tab: bool,
+    reuse_viewer_tab: bool,
     default_page: String,
     track_marker: String,
 }
@@ -43,6 +44,8 @@ pub struct ApiProfileUpdate {
     distance_unit: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     open_viewer_in_new_tab: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reuse_viewer_tab: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     default_page: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -60,6 +63,7 @@ pub fn get(user: auth::AuthUser) -> Json<ApiProfile> {
         altitude_unit: user.altitude_unit,
         distance_unit: user.distance_unit,
         open_viewer_in_new_tab: user.open_viewer_in_new_tab,
+        reuse_viewer_tab: user.reuse_viewer_tab,
         default_page: user.default_page,
         track_marker: user.track_marker,
     })
@@ -106,6 +110,7 @@ pub async fn edit(
         }
     }
     let user_for_viewer = user.clone();
+    let user_for_reuse = user.clone();
     let user_for_page = user.clone();
     let user_for_marker = user.clone();
     if let Some(news_opt_in) = data.news_opt_in {
@@ -127,6 +132,17 @@ pub async fn edit(
             error!("Updating user's viewer preference failed: {e}");
             return Err(ApiError::IoError {
                 message: "Could not update viewer preference".into(),
+            });
+        }
+    }
+    if let Some(reuse_viewer_tab) = data.reuse_viewer_tab {
+        if let Err(e) = database
+            .run(move |db| data::update_reuse_viewer_tab(db, &user_for_reuse, reuse_viewer_tab))
+            .await
+        {
+            error!("Updating user's viewer tab reuse preference failed: {e}");
+            return Err(ApiError::IoError {
+                message: "Could not update viewer tab reuse preference".into(),
             });
         }
     }
@@ -227,6 +243,7 @@ mod tests {
                             altitude_unit: None,
                             distance_unit: None,
                             open_viewer_in_new_tab: None,
+                            reuse_viewer_tab: None,
                             default_page: None,
                             track_marker: None,
                         })
@@ -283,6 +300,7 @@ mod tests {
                     altitude_unit: Some("ft".into()),
                     distance_unit: Some("nm".into()),
                     open_viewer_in_new_tab: None,
+                    reuse_viewer_tab: None,
                     default_page: None,
                     track_marker: None,
                 })
@@ -304,6 +322,7 @@ mod tests {
                     altitude_unit: Some("m".into()),
                     distance_unit: Some("mi".into()),
                     open_viewer_in_new_tab: None,
+                    reuse_viewer_tab: None,
                     default_page: None,
                     track_marker: None,
                 })
@@ -325,6 +344,7 @@ mod tests {
                     altitude_unit: Some("meters".into()),
                     distance_unit: Some("nm".into()),
                     open_viewer_in_new_tab: None,
+                    reuse_viewer_tab: None,
                     default_page: None,
                     track_marker: None,
                 })
@@ -372,6 +392,7 @@ mod tests {
                             altitude_unit: None,
                             distance_unit: None,
                             open_viewer_in_new_tab: None,
+                            reuse_viewer_tab: None,
                             default_page: Some($page.into()),
                             track_marker: None,
                         })
@@ -438,6 +459,7 @@ mod tests {
                             altitude_unit: None,
                             distance_unit: None,
                             open_viewer_in_new_tab: None,
+                            reuse_viewer_tab: None,
                             default_page: None,
                             track_marker: Some($marker.into()),
                         })
@@ -496,6 +518,7 @@ mod tests {
                             altitude_unit: None,
                             distance_unit: None,
                             open_viewer_in_new_tab: Some($open_in_new_tab),
+                            reuse_viewer_tab: None,
                             default_page: None,
                             track_marker: None,
                         })
@@ -534,5 +557,70 @@ mod tests {
         assert_eq!(resp4.status(), Status::Ok);
         let body = resp4.into_string().expect("body");
         assert!(body.contains(r#""openViewerInNewTab":true"#));
+    }
+
+    #[test]
+    fn update_reuse_viewer_tab() {
+        let ctx = DbTestContext::new();
+        let client = make_api_client();
+
+        /// Helper function: Assert viewer tab reuse preference state
+        fn assert_reuse_viewer_tab(conn_mutex: &Mutex<PgConnection>, user_id: i32, reuse_tab: bool) {
+            let mut conn = conn_mutex.lock().unwrap();
+            let user = data::get_user(&mut conn, user_id).expect("User not found");
+            assert_eq!(user.reuse_viewer_tab, reuse_tab);
+        }
+
+        /// Helper macro: Send request
+        macro_rules! update_reuse_viewer_tab {
+            ($reuse_tab:expr) => {
+                client
+                    .post("/profile")
+                    .header(ContentType::JSON)
+                    .body(
+                        json::to_string(&ApiProfileUpdate {
+                            news_opt_in: None,
+                            altitude_unit: None,
+                            distance_unit: None,
+                            open_viewer_in_new_tab: None,
+                            reuse_viewer_tab: Some($reuse_tab),
+                            default_page: None,
+                            track_marker: None,
+                        })
+                        .unwrap(),
+                    )
+                    .private_cookie(ctx.auth_cookie_user1())
+                    .cookie(ctx.username_cookie())
+                    .dispatch()
+            };
+        }
+
+        // Initially, the database default (reuse the viewer tab) applies
+        assert_reuse_viewer_tab(&ctx.conn, ctx.testuser1.user.id, true);
+
+        // Switch to always opening a new viewer tab
+        let resp1 = update_reuse_viewer_tab!(false);
+        assert_eq!(resp1.status(), Status::NoContent);
+        assert_reuse_viewer_tab(&ctx.conn, ctx.testuser1.user.id, false);
+
+        // Switching back to reusing the viewer tab works, too
+        let resp2 = update_reuse_viewer_tab!(true);
+        assert_eq!(resp2.status(), Status::NoContent);
+        assert_reuse_viewer_tab(&ctx.conn, ctx.testuser1.user.id, true);
+
+        // Change is idempotent
+        let resp3 = update_reuse_viewer_tab!(true);
+        assert_eq!(resp3.status(), Status::NoContent);
+        assert_reuse_viewer_tab(&ctx.conn, ctx.testuser1.user.id, true);
+
+        // The preference is also reported when loading the profile
+        let resp4 = client
+            .get("/profile")
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp4.status(), Status::Ok);
+        let body = resp4.into_string().expect("body");
+        assert!(body.contains(r#""reuseViewerTab":true"#));
     }
 }

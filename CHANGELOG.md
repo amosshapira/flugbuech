@@ -84,8 +84,12 @@ build arg); upstream builds are unaffected.
   no private data is exposed to unauthenticated sessions.
 - **"View track" buttons** (flight detail page + flights list rows) with
   per-user preferences: open in a new tab or same tab
-  (`open_viewer_in_new_tab`, default new tab) and choice of replay marker
-  (`track_marker`: glider or paraglider).
+  (`open_viewer_in_new_tab`, default new tab), choice of replay marker
+  (`track_marker`: glider or paraglider), and optional reuse of the viewer
+  tab (`reuse_viewer_tab`, default on): with "open in new tab" and reuse
+  enabled, clicking "View track" navigates the already-open viewer tab
+  (identified by a fixed window name) to the new flight instead of opening
+  another tab each time.
 - The fork's viewer README documents the container side.
 
 ### Small niceties (baae87f, 1a6f108)
@@ -109,8 +113,8 @@ build arg); upstream builds are unaffected.
 
 ## Test coverage
 
-All new backend functionality ships with API tests (62 → 64 tests,
-`cargo test --features igcviewer`; 59 without the feature): profile
+All new backend functionality ships with API tests (62 → 66 tests,
+`cargo test --features igcviewer`; 61 without the feature): profile
 preference round-trips and validation, back-fill behaviour (idempotency,
 never-overwrite), view route authorization matrix (401/403/404, redirect
 targets, token auth), and parser regressions.
