@@ -280,6 +280,38 @@ pub fn parse_igc_data(data: &[u8], user: &models::User, db: &mut diesel::PgConne
     parse_igc(buf_reader, user, db)
 }
 
+/// Extract all B record fixes of an IGC file as geographic coordinates.
+///
+/// Returns a vector of `[longitude, latitude]` pairs (GeoJSON coordinate
+/// order). Hemisphere signs (N/S/E/W) are handled by the `igc` crate.
+///
+/// Returns `None` if the data cannot be read or contains no B record fixes
+/// (e.g. because it is not a valid IGC file).
+pub fn extract_igc_track(data: &[u8]) -> Option<Vec<[f64; 2]>> {
+    // Split lines in IGC file, leniently regarding invalid UTF8 data and
+    // remaining '\r' characters (see `parse_igc`).
+    let lines = BufReader::new(Cursor::new(data))
+        .split(b'\n')
+        .collect::<Result<Vec<Vec<u8>>, io::Error>>()
+        .ok()?;
+
+    let mut coordinates = Vec::new();
+    for line_bytes in &lines {
+        let line = String::from_utf8_lossy(line_bytes);
+        if let Ok(Record::B(fix)) = Record::parse_line(line.trim()) {
+            let lat = f64::from(fix.pos.lat);
+            let lng = f64::from(fix.pos.lon);
+            coordinates.push([lng, lat]);
+        }
+    }
+
+    if coordinates.is_empty() {
+        None
+    } else {
+        Some(coordinates)
+    }
+}
+
 /// Process IGC file, return parsed data.
 #[post(
     "/flights/add/process_igc",
@@ -417,6 +449,29 @@ B1200004800000N01100000EA0100001500";
         let info = process(data).unwrap();
         assert_eq!(info.pilot_in_command, Some("Alex Doe".to_string()));
         assert_eq!(info.second_pilot, None);
+    }
+
+    /// Extract B record fixes as GeoJSON coordinates, including southern /
+    /// western hemispheres, and ignoring lines without fixes.
+    #[test]
+    fn extract_track_coordinates() {
+        let data = "\
+HFPLTPILOTINCHARGE: Alex Doe
+B1000004800000N01100000EA0100001000
+B1001004801000S01100000WA0200002000
+A000XXX";
+        let track = extract_igc_track(data.as_bytes()).expect("track coordinates");
+        assert_eq!(track.len(), 2);
+        assert_eq!(track[0], [11.0, 48.0]);
+        assert_eq!(track[1][0], -11.0);
+        assert!((track[1][1] - -(48.0 + 1000.0 / 60_000.0)).abs() < 1e-9);
+    }
+
+    /// Data without any B record fixes yields no track.
+    #[test]
+    fn extract_track_coordinates_none() {
+        assert_eq!(extract_igc_track(b"HFPLTPILOTINCHARGE: Alex Doe"), None);
+        assert_eq!(extract_igc_track(b""), None);
     }
 
     /// Parse IGC data with only two lines: pilot name and site.
