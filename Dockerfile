@@ -14,8 +14,8 @@ RUN cd /build/flugbuech && npm install && npm run build
 
 ###### BACKEND ######
 
-# Build server resources in rust container
-FROM docker.io/rust:1-buster AS backend-build
+# Build server resources in rust container (Debian 12: buster is EOL)
+FROM docker.io/rust:1-bookworm AS backend-build
 
 # Compile-time feature flag: enable the igcviewer integration (cargo feature
 # "igcviewer")
@@ -31,8 +31,10 @@ RUN cd /build/flugbuech \
 
 FROM debian:13-slim
 
-# Install init process and other dependencies
+# Install init process and other dependencies; upgrade pulls security
+# fixes (e.g. libpq5/libc) that the base tag may predate.
 RUN apt-get update -q \
+ && apt-get -y -q upgrade \
  && apt-get -y -q install --no-install-recommends dumb-init libpq5 \
  && rm -rf /var/lib/apt/lists/*
 

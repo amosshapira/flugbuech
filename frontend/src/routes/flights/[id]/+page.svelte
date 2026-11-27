@@ -19,7 +19,7 @@
   $: flight = data.flight;
   $: launchAt = data.flight.launchAt;
   $: landingAt = data.flight.landingAt;
-  $: trackUrl = `/api/v1/flights/${flight.id}/igc/view/?marker=${$viewer.trackMarker}&style=${$viewer.renderStyle}`;
+  $: trackUrl = `/api/v1/flights/${flight.id}/igc/view/?marker=${$viewer.trackMarker}&style=${$viewer.renderStyle}&altunit=${$units.altitudeUnit}`;
 </script>
 
 <nav class="breadcrumb" aria-label="breadcrumbs">
