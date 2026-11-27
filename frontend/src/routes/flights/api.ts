@@ -225,6 +225,39 @@ export async function processIgc(blob: Blob): Promise<IgcMetadata> {
     }
 }
 
+const SCHEMA_API_FLIGHT_TRACK = z.object({
+    type: z.literal('Feature'),
+    geometry: z.object({
+        type: z.literal('LineString'),
+        coordinates: z.array(z.tuple([z.number(), z.number()])),
+    }),
+    properties: z.record(z.string(), z.unknown()),
+});
+
+/** GeoJSON track coordinates: [longitude, latitude] pairs. */
+export type FlightTrackCoordinates = z.infer<
+    typeof SCHEMA_API_FLIGHT_TRACK
+>['geometry']['coordinates'];
+
+/**
+ * Load the 2D track of a flight, parsed from its IGC file, as GeoJSON
+ * coordinates.
+ */
+export async function loadApiFlightTrack(id: number): Promise<FlightTrackCoordinates> {
+    const res = await fetch(`/api/v1/flights/${id}/track`);
+    switch (res.status) {
+        case 200:
+            return SCHEMA_API_FLIGHT_TRACK.parse(await res.json()).geometry.coordinates;
+        case 401:
+            throw new AuthenticationError();
+        default:
+            throw error(
+                ensureClientOrServerErrorCode(res.status),
+                `Could not fetch flight track from API: ${await extractResponseError(res)}`,
+            );
+    }
+}
+
 export interface NewApiFlight {
     number?: number;
     glider?: number;

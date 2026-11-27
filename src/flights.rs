@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     auth, data,
     models::{Flight, Glider, Location, NewFlight, User},
-    process_igc::parse_igc_data,
+    process_igc::{extract_igc_track, parse_igc_data},
     responders::ApiError,
 };
 
@@ -241,6 +241,28 @@ pub struct ApiFlight {
 }
 
 // Forms
+
+/// GeoJSON Feature containing the 2D track of a flight.
+#[derive(Serialize, Deserialize)]
+pub struct ApiTrack {
+    #[serde(rename = "type")]
+    kind: String, // Always "Feature"
+    geometry: ApiTrackGeometry,
+    properties: ApiTrackProperties,
+}
+
+/// GeoJSON geometry of a flight track (a LineString).
+#[derive(Serialize, Deserialize)]
+pub struct ApiTrackGeometry {
+    #[serde(rename = "type")]
+    kind: String, // Always "LineString"
+    /// Track coordinates as `[longitude, latitude]` pairs.
+    coordinates: Vec<[f64; 2]>,
+}
+
+/// Empty GeoJSON properties object (serializes as `{}`).
+#[derive(Serialize, Deserialize)]
+pub struct ApiTrackProperties {}
 
 /// Valid operational roles on a flight.
 const FLIGHT_CAPACITIES: [&str; 4] = ["PIC", "Dual", "Instructor", "ICUS"];
@@ -1207,6 +1229,52 @@ pub async fn igc_download(
     igc_file_for_flight(database, flight).await
 }
 
+/// Return the 2D track of a flight, parsed from its IGC file, as GeoJSON
+/// Feature with a LineString geometry.
+#[get("/flights/<id>/track")]
+pub async fn track(
+    user: auth::AuthUser,
+    database: data::Database,
+    id: i32,
+) -> Result<Json<ApiTrack>, Status> {
+    let user = user.into_inner();
+
+    // Get flight
+    let flight = match database.run(move |db| data::get_flight_with_id(db, id)).await {
+        Some(flight) => flight,
+        None => return Err(Status::NotFound),
+    };
+
+    // Ownership check
+    if flight.user_id != user.id {
+        return Err(Status::Forbidden);
+    }
+
+    // Get IGC data and extract the track coordinates
+    let coordinates = database
+        .run(move |db| data::get_igc_for_flight(db, &flight).and_then(|igc| extract_igc_track(&igc.data)))
+        .await;
+    let coordinates = match coordinates {
+        Some(coordinates) => coordinates,
+        None => return Err(Status::NotFound),
+    };
+
+    Ok(Json(ApiTrack {
+        kind: "Feature".into(),
+        geometry: ApiTrackGeometry {
+            kind: "LineString".into(),
+            coordinates,
+        },
+        properties: ApiTrackProperties {},
+    }))
+}
+
+#[get("/flights/<id>/track", rank = 2)]
+#[allow(unused_variables)]
+pub fn track_nologin(id: i32) -> ApiError {
+    ApiError::MissingAuthentication
+}
+
 /// Redirect to the igcviewer instance to view the track of a flight.
 ///
 /// The browser is redirected to the configured public URL of the igcviewer
@@ -1282,6 +1350,8 @@ pub fn api_routes() -> Vec<Route> {
         delete,
         delete_nologin,
         igc_download,
+        track,
+        track_nologin,
     ];
     #[cfg(feature = "igcviewer")]
     routes.extend(routes![igc_view, igc_view_nologin]);
@@ -1595,6 +1665,92 @@ B1002004800000N01100000EA0150001500";
         // Endpoint requires authentication
         let resp = client.post("/flights/backfill_igc").dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
+    }
+
+    /// Fetch the 2D IGC track of a flight as GeoJSON via the API.
+    #[test]
+    fn track() {
+        let ctx = DbTestContext::new();
+        let client = make_client();
+
+        // Create a flight with an IGC file containing three B record fixes,
+        // including southern / western hemispheres.
+        let flight = data::create_flight(
+            &mut *ctx.force_get_conn(),
+            &NewFlight {
+                number: Some(1),
+                user_id: ctx.testuser1.user.id,
+                ..Default::default()
+            },
+            Some(
+                b"HFGTYGLIDERTYPE: DG-505\n\
+                  B1000004800000N01100000EA0100001000\n\
+                  B1001004801000S01100000WA0200002000\n\
+                  B1002004800000N01100000EA0150001500"
+                    .to_vec(),
+            ),
+        );
+
+        // Owner: Track is returned as GeoJSON
+        let resp = client
+            .get(format!("/flights/{}/track", flight.id))
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let track: ApiTrack = resp.into_json().expect("body");
+        assert_eq!(track.kind, "Feature");
+        assert_eq!(track.geometry.kind, "LineString");
+        assert_eq!(track.geometry.coordinates.len(), 3);
+        assert_eq!(track.geometry.coordinates[0], [11.0, 48.0]);
+        assert_eq!(track.geometry.coordinates[1][0], -11.0);
+        assert!((track.geometry.coordinates[1][1] - -48.01666666666667).abs() < 1e-9);
+
+        // Other user: Forbidden
+        let resp = client
+            .get(format!("/flights/{}/track", flight.id))
+            .private_cookie(ctx.auth_cookie_user2())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Forbidden);
+
+        // Without authentication: Unauthorized
+        let resp = client.get(format!("/flights/{}/track", flight.id)).dispatch();
+        assert_eq!(resp.status(), Status::Unauthorized);
+
+        // Without IGC data: Not found
+        let flight_no_igc = data::create_flight(
+            &mut *ctx.force_get_conn(),
+            &NewFlight {
+                number: Some(2),
+                user_id: ctx.testuser1.user.id,
+                ..Default::default()
+            },
+            None,
+        );
+        let resp = client
+            .get(format!("/flights/{}/track", flight_no_igc.id))
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::NotFound);
+
+        // With IGC data but without B record fixes: Not found
+        let flight_igc_no_fixes = data::create_flight(
+            &mut *ctx.force_get_conn(),
+            &NewFlight {
+                number: Some(3),
+                user_id: ctx.testuser1.user.id,
+                ..Default::default()
+            },
+            Some(b"HFPLTPILOTINCHARGE: Alex Doe".to_vec()),
+        );
+        let resp = client
+            .get(format!("/flights/{}/track", flight_igc_no_fixes.id))
+            .private_cookie(ctx.auth_cookie_user1())
+            .cookie(ctx.username_cookie())
+            .dispatch();
+        assert_eq!(resp.status(), Status::NotFound);
     }
 
     #[test]

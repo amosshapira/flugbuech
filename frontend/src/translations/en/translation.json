@@ -145,6 +145,7 @@
     "action--view-track": "View track",
     "action--edit-flight": "Edit Flight",
     "action--import-csv": "Import from CSV",
+    "action--show-track": "Show track",
     "action--view-flight": "View Flight",
     "column--actions": "Actions",
     "column--date": "Date",
@@ -152,6 +153,8 @@
     "column--glider": "Glider",
     "column--p2": "Co-Pilot",
     "column--p2-title": "Second pilot / instructor / passenger",
+    "column--track-preview": "Track",
+    "column--track-preview-title": "2D track preview from the IGC file",
     "column--landing": "Landing",
     "column--launch": "Launch",
     "column--track-distance": "Track Distance",
@@ -163,6 +166,7 @@
     "prose--delete-confirm": "Are you sure that you want to delete {flight}?",
     "prose--delete-success": "{flight} successfully deleted",
     "prose--flight-log-count": "You've logged {count, plural, =1 {# flight} other {# flights}} so far!",
+    "prose--track-loading": "Loading…",
     "title--your-flights": "Your Flights"
   },
   "glider": {

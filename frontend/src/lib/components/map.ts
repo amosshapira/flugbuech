@@ -25,6 +25,10 @@ export const SWISSTOPO_WMS_BASE_URL =
 // The default centerpoint of the map
 export const DEFAULT_MAP_CENTER = {lng: 10, lat: 47};
 
+// Dimensions of the flight track hover popup (see FlightTrackPopup.svelte)
+export const FLIGHT_TRACK_POPUP_WIDTH = 280;
+export const FLIGHT_TRACK_POPUP_HEIGHT = 180;
+
 export const MARKER_COLOR = '#1496ED'; // Primary color blue
 
 export interface Coordinates {
