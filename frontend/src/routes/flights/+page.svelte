@@ -239,7 +239,7 @@
         {#each data.flights as flight (flight.id)}
           {@const launchAt = flight.launchAt ? data.locations[flight.launchAt] : undefined}
           {@const landingAt = flight.landingAt ? data.locations[flight.landingAt] : undefined}
-          {@const trackUrl = `/api/v1/flights/${flight.id}/igc/view/?marker=${$viewer.trackMarker}`}
+          {@const trackUrl = `/api/v1/flights/${flight.id}/igc/view/?marker=${$viewer.trackMarker}&style=${$viewer.renderStyle}`}
           <tr>
             <td class="no-wrap">{flight.number ?? '-'}</td>
             <td class="no-wrap">

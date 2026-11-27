@@ -89,6 +89,11 @@
             'reuseViewerTab' in profile && typeof profile.reuseViewerTab === 'boolean'
               ? profile.reuseViewerTab
               : undefined,
+          renderStyle:
+            'renderStyle' in profile &&
+            (profile.renderStyle === 'ground' || profile.renderStyle === 'deck')
+              ? profile.renderStyle
+              : undefined,
         });
       }
     } catch {

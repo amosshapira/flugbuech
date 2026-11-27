@@ -231,6 +231,14 @@ pub fn update_track_marker(conn: &mut PgConnection, user: &User, marker: &str) -
         .get_result(conn)
 }
 
+/// Update the IGC track viewer rendering style, return the updated user
+/// model.
+pub fn update_render_style(conn: &mut PgConnection, user: &User, style: &str) -> QueryResult<User> {
+    diesel::update(user)
+        .set(users::render_style.eq(style))
+        .get_result(conn)
+}
+
 /// Update a user's preferred display units, return the updated user model.
 pub fn update_units(
     conn: &mut PgConnection,

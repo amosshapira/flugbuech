@@ -19,6 +19,7 @@ const SCHEMA_API_PROFILE = z.object({
     reuseViewerTab: z.boolean().optional(),
     defaultPage: z.string().optional(),
     trackMarker: z.string().optional(),
+    renderStyle: z.string().optional(),
 });
 
 export type Profile = z.infer<typeof SCHEMA_API_PROFILE>;
@@ -51,6 +52,7 @@ export interface ProfileUpdate {
     readonly reuseViewerTab?: boolean;
     readonly defaultPage?: string;
     readonly trackMarker?: string;
+    readonly renderStyle?: string;
 }
 
 /**

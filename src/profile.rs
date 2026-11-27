@@ -18,6 +18,9 @@ pub const DEFAULT_PAGES: [&str; 5] = ["/", "/flights/", "/gliders/", "/locations
 /// Valid values for the replay marker in the IGC track viewer.
 pub const TRACK_MARKERS: [&str; 2] = ["glider", "paraglider"];
 
+/// Valid values for the IGC track viewer rendering style.
+pub const RENDER_STYLES: [&str; 2] = ["ground", "deck"];
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiProfile {
@@ -31,6 +34,7 @@ pub struct ApiProfile {
     reuse_viewer_tab: bool,
     default_page: String,
     track_marker: String,
+    render_style: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -50,6 +54,8 @@ pub struct ApiProfileUpdate {
     default_page: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     track_marker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    render_style: Option<String>,
 }
 
 #[get("/profile")]
@@ -66,6 +72,7 @@ pub fn get(user: auth::AuthUser) -> Json<ApiProfile> {
         reuse_viewer_tab: user.reuse_viewer_tab,
         default_page: user.default_page,
         track_marker: user.track_marker,
+        render_style: user.render_style,
     })
 }
 
@@ -113,6 +120,7 @@ pub async fn edit(
     let user_for_reuse = user.clone();
     let user_for_page = user.clone();
     let user_for_marker = user.clone();
+    let user_for_style = user.clone();
     if let Some(news_opt_in) = data.news_opt_in {
         if let Err(e) = database
             .run(move |db| data::update_news_opt_in(db, &user, news_opt_in))
@@ -175,6 +183,22 @@ pub async fn edit(
             error!("Updating user's track marker failed: {e}");
             return Err(ApiError::IoError {
                 message: "Could not update track marker".into(),
+            });
+        }
+    }
+    if let Some(render_style) = data.render_style.clone() {
+        if !RENDER_STYLES.contains(&render_style.as_str()) {
+            return Err(ApiError::InvalidData {
+                message: format!("Invalid style, must be one of {RENDER_STYLES:?}"),
+            });
+        }
+        if let Err(e) = database
+            .run(move |db| data::update_render_style(db, &user_for_style, &render_style))
+            .await
+        {
+            error!("Updating user's render style failed: {e}");
+            return Err(ApiError::IoError {
+                message: "Could not update render style".into(),
             });
         }
     }
@@ -246,6 +270,7 @@ mod tests {
                             reuse_viewer_tab: None,
                             default_page: None,
                             track_marker: None,
+                            render_style: None,
                         })
                         .unwrap(),
                     )
@@ -303,6 +328,7 @@ mod tests {
                     reuse_viewer_tab: None,
                     default_page: None,
                     track_marker: None,
+                    render_style: None,
                 })
                 .unwrap(),
             )
@@ -325,6 +351,7 @@ mod tests {
                     reuse_viewer_tab: None,
                     default_page: None,
                     track_marker: None,
+                    render_style: None,
                 })
                 .unwrap(),
             )
@@ -347,6 +374,7 @@ mod tests {
                     reuse_viewer_tab: None,
                     default_page: None,
                     track_marker: None,
+                    render_style: None,
                 })
                 .unwrap(),
             )
@@ -395,6 +423,7 @@ mod tests {
                             reuse_viewer_tab: None,
                             default_page: Some($page.into()),
                             track_marker: None,
+                            render_style: None,
                         })
                         .unwrap(),
                     )
@@ -462,6 +491,7 @@ mod tests {
                             reuse_viewer_tab: None,
                             default_page: None,
                             track_marker: Some($marker.into()),
+                            render_style: None,
                         })
                         .unwrap(),
                     )
@@ -488,6 +518,62 @@ mod tests {
         let resp3 = update_track_marker!("balloon");
         assert_eq!(resp3.status(), Status::BadRequest);
         assert_track_marker(&ctx.conn, ctx.testuser1.user.id, "glider");
+    }
+
+    #[test]
+    fn update_render_style() {
+        let ctx = DbTestContext::new();
+        let client = make_api_client();
+
+        /// Helper function: Assert render style state
+        fn assert_render_style(conn_mutex: &Mutex<PgConnection>, user_id: i32, style: &str) {
+            let mut conn = conn_mutex.lock().unwrap();
+            let user = data::get_user(&mut conn, user_id).expect("User not found");
+            assert_eq!(user.render_style, style);
+        }
+
+        /// Helper macro: Send request
+        macro_rules! update_render_style {
+            ($style:expr) => {
+                client
+                    .post("/profile")
+                    .header(ContentType::JSON)
+                    .body(
+                        json::to_string(&ApiProfileUpdate {
+                            news_opt_in: None,
+                            altitude_unit: None,
+                            distance_unit: None,
+                            open_viewer_in_new_tab: None,
+                            reuse_viewer_tab: None,
+                            default_page: None,
+                            track_marker: None,
+                            render_style: Some($style.into()),
+                        })
+                        .unwrap(),
+                    )
+                    .private_cookie(ctx.auth_cookie_user1())
+                    .cookie(ctx.username_cookie())
+                    .dispatch()
+            };
+        }
+
+        // Initially, the database default (ground) applies
+        assert_render_style(&ctx.conn, ctx.testuser1.user.id, "ground");
+
+        // Switch to the experimental deck style
+        let resp1 = update_render_style!("deck");
+        assert_eq!(resp1.status(), Status::NoContent);
+        assert_render_style(&ctx.conn, ctx.testuser1.user.id, "deck");
+
+        // Switch back to the ground style
+        let resp2 = update_render_style!("ground");
+        assert_eq!(resp2.status(), Status::NoContent);
+        assert_render_style(&ctx.conn, ctx.testuser1.user.id, "ground");
+
+        // Invalid values are rejected and don't change anything
+        let resp3 = update_render_style!("flat");
+        assert_eq!(resp3.status(), Status::BadRequest);
+        assert_render_style(&ctx.conn, ctx.testuser1.user.id, "ground");
     }
 
     #[test]
@@ -521,6 +607,7 @@ mod tests {
                             reuse_viewer_tab: None,
                             default_page: None,
                             track_marker: None,
+                            render_style: None,
                         })
                         .unwrap(),
                     )
@@ -586,6 +673,7 @@ mod tests {
                             reuse_viewer_tab: Some($reuse_tab),
                             default_page: None,
                             track_marker: None,
+                            render_style: None,
                         })
                         .unwrap(),
                     )

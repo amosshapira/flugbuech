@@ -112,6 +112,7 @@ table! {
         reuse_viewer_tab -> Bool,
         default_page -> Varchar,
         track_marker -> Varchar,
+        render_style -> Varchar,
     }
 }
 

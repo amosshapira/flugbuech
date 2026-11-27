@@ -5,7 +5,7 @@
   import {i18n} from '$lib/i18n';
   import type {AltitudeUnit, DistanceUnit} from '$lib/units';
   import {ALTITUDE_UNITS, DISTANCE_UNITS, clearSessionUnits, units} from '$lib/units';
-  import {applyProfileViewer, type TrackMarker} from '$lib/viewer';
+  import {applyProfileViewer, type RenderStyle, type TrackMarker} from '$lib/viewer';
 
   import {invalidateAll} from '$app/navigation';
 
@@ -30,6 +30,34 @@
   /// The marker options for the track viewer replay. Must match the backend's
   /// TRACK_MARKERS.
   const TRACK_MARKERS = ['glider', 'paraglider'];
+
+  /// The rendering-style options for the track viewer. Must match the
+  /// backend's RENDER_STYLES.
+  const RENDER_STYLES = ['ground', 'deck'];
+
+  function updateRenderStyle(style: string): void {
+    apiUpdateProfile({renderStyle: style})
+      .then((result) => {
+        if (result.success) {
+          applyProfileViewer({renderStyle: style as RenderStyle});
+          invalidateAll();
+        } else {
+          errorModal = {
+            type: 'api-error',
+            message: `Failed to change rendering style: ${result.errorReason} (${result.errorDescription})`,
+          };
+        }
+      })
+      .catch((error) => {
+        console.error('Profile update error', error);
+        errorModal = {
+          type: 'api-error',
+          message: `Failed to change rendering style: ${
+            error?.body?.message !== undefined ? error.body.message : error
+          }`,
+        };
+      });
+  }
 
   function updateTrackMarker(marker: string): void {
     apiUpdateProfile({trackMarker: marker})
@@ -356,6 +384,31 @@
                 {marker === 'glider'
                   ? $i18n.t('profile.track-marker--glider')
                   : $i18n.t('profile.track-marker--paraglider')}
+              </option>
+            {/each}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="field is-horizontal">
+      <div class="field-label is-normal">
+        <label class="label" for="render-style">
+          {$i18n.t('profile.title--render-style')}
+        </label>
+      </div>
+      <div class="field-body">
+        <div class="select">
+          <select
+            id="render-style"
+            value={data.profile.renderStyle || 'ground'}
+            on:change={(event) => updateRenderStyle(event.currentTarget.value as string)}
+          >
+            {#each RENDER_STYLES as style (style)}
+              <option value={style}>
+                {style === 'ground'
+                  ? $i18n.t('profile.render-style--ground')
+                  : $i18n.t('profile.render-style--deck')}
               </option>
             {/each}
           </select>

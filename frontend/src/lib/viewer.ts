@@ -10,14 +10,20 @@ export const VIEWER_WINDOW_NAME = 'igcviewer';
 /** Replay marker for the IGC track viewer. */
 export type TrackMarker = 'glider' | 'paraglider';
 
+/** IGC track viewer rendering style. */
+export type RenderStyle = 'ground' | 'deck';
+
 export const DEFAULT_TRACK_MARKER: TrackMarker = 'glider';
+export const DEFAULT_RENDER_STYLE: RenderStyle = 'ground';
 export const TRACK_MARKERS: readonly TrackMarker[] = ['glider', 'paraglider'];
+export const RENDER_STYLES: readonly RenderStyle[] = ['ground', 'deck'];
 
 /** How the IGC track viewer is opened. */
 export interface ViewerPrefs {
     openViewerInNewTab: boolean;
     reuseViewerTab: boolean;
     trackMarker: TrackMarker;
+    renderStyle: RenderStyle;
 }
 
 const STORAGE_KEY = 'flugbuech-viewer';
@@ -32,6 +38,7 @@ export const viewer = writable<ViewerPrefs>({
     openViewerInNewTab: DEFAULT_OPEN_VIEWER_IN_NEW_TAB,
     reuseViewerTab: DEFAULT_REUSE_VIEWER_TAB,
     trackMarker: DEFAULT_TRACK_MARKER,
+    renderStyle: DEFAULT_RENDER_STYLE,
 });
 
 /**
@@ -60,6 +67,9 @@ export function initializeViewer(): void {
     }
     if (parsed.trackMarker && (TRACK_MARKERS as readonly string[]).includes(parsed.trackMarker)) {
         viewer.update((v) => ({...v, trackMarker: parsed.trackMarker as TrackMarker}));
+    }
+    if (parsed.renderStyle && (RENDER_STYLES as readonly string[]).includes(parsed.renderStyle)) {
+        viewer.update((v) => ({...v, renderStyle: parsed.renderStyle as RenderStyle}));
     }
 }
 

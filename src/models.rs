@@ -37,6 +37,8 @@ pub struct User {
     pub default_page: String,
     /// Replay marker in the IGC track viewer ("glider" or "paraglider")
     pub track_marker: String,
+    /// IGC track viewer rendering style ("ground" or "deck")
+    pub render_style: String,
 }
 
 #[derive(Identifiable, Queryable, Associations, AsChangeset, Serialize, PartialEq, Debug, Clone)]
